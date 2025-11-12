@@ -1,59 +1,65 @@
-Java Fighting Game
+# Java Fighting Game
 
-This is a fast-paced, two-player fighting game built using Java and Swing. It features robust, competitive mechanics designed for strategic play and precise timing.
+A fast-paced, two-player fighting game built using Java and Swing. Features robust, competitive mechanics designed for strategic play and precise timing.
 
-Core Mechanics
+## Core Mechanics
 
-Strategic Blocking: Players can block 100% of damage, but a successful block instantly disables the defense and starts a 2-second cooldown, preventing abuse.
+- **Strategic Blocking**: Players can block 100% of damage, but a successful block instantly disables the defense and starts a 2-second cooldown, preventing abuse.
 
-Knockdown System: The powerful Super Attack forces the opponent into a Knockdown state, where they fall to the ground. They are briefly invincible as they stand up.
+- **Knockdown System**: The powerful Super Attack forces the opponent into a Knockdown state, where they fall to the ground. They are briefly invincible as they stand up.
 
-Hit Impact: Regular attacks apply a short stun and light knockback, interrupting the opponent's actions.
+- **Hit Impact**: Regular attacks apply a short stun and light knockback, interrupting the opponent's actions.
 
-Dynamic Hitboxes: Attacks have specific vertical properties: Standing attacks hit mid-level (can be dodged by crouching), and crouching attacks hit low (must be blocked).
+- **Dynamic Hitboxes**: Attacks have specific vertical properties:
+  - Standing attacks hit mid-level (can be dodged by crouching)
+  - Crouching attacks hit low (must be blocked)
 
-Movement: Includes quick Dashes and Backsteps for advanced positioning. Fighters automatically turn to face their opponent and are restricted by Corner Boundaries.
+- **Movement**: Includes quick Dashes and Backsteps for advanced positioning. Fighters automatically turn to face their opponent and are restricted by Corner Boundaries.
 
-Attack Types and Cooldowns
+## Attack Types and Cooldowns
 
-Regular Attack: A standard, quick attack with low cooldown.
+- **Regular Attack**: A standard, quick attack with low cooldown.
+- **Super Attack**: High-damage attack that triggers Knockdown and has a long, 25-second cooldown.
 
-Super Attack: High-damage attack that triggers Knockdown and has a long, 25-second cooldown.
-
-Controls
+## Controls
 
 The game is designed for two players sharing a single keyboard.
 
-Player 1 (Blue)
+### Player 1 (Blue)
 
-Move Left / Right: A / D
+| Action | Key |
+|--------|-----|
+| Move Left / Right | A / D |
+| Jump | W |
+| Crouch / Block | S |
+| Regular Attack | F |
+| Super Attack | G |
+| Forward Dash | E |
+| Backstep | R |
 
-Jump: W
+### Player 2 (Red)
 
-Crouch / Block: S
+| Action | Key |
+|--------|-----|
+| Move Left / Right | Left / Right Arrows |
+| Jump | Up Arrow |
+| Crouch / Block | Down Arrow |
+| Regular Attack | L |
+| Super Attack | K |
+| Forward Dash | I |
+| Backstep | O |
 
-Regular Attack: F
+### Game Controls
 
-Super Attack: G
+- **Start Game**: ENTER (can be pressed by either player)
 
-Forward Dash: E
+## Requirements
 
-Backstep: R
+- Java 21 or higher
 
-Player 2 (Red)
+## How to Run
 
-Move Left / Right: Left / Right Arrows
-
-Jump: Up Arrow
-
-Crouch / Block: Down Arrow
-
-Regular Attack: L
-
-Super Attack: K
-
-Forward Dash: I
-
-Backstep: O
-
-Start Game: ENTER (used by either player)
+1. Clone the repository
+2. Compile and run the `FightingGame` class
+3. Press ENTER to start the game
+4. Enjoy the match!
