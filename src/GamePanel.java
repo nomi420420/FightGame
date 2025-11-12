@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
 import java.lang.Math;
+import java.util.ArrayList;
 
 public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
@@ -15,10 +16,10 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int HEIGHT = 500;
     private static final int GAME_FPS = 60;
     private static final int GROUND_Y = 400;
-    private static final int INITIAL_STOCKS = 3; // MATCH IS BEST OUT OF 3 STOCKS
+    private static final int INITIAL_STOCKS = 3;
     private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause after stock loss
 
-    // Game States (Updated Indices)
+    // Game States
     private final int START_MENU = 0, CHARACTER_SELECT = 1, STAGE_SELECT = 2, FIGHT = 3, GAME_OVER = 4;
 
     // Fighter Constants
@@ -29,7 +30,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int FIGHT_SPLASH_DURATION = 60;
     private static final int PUSH_BACK_AMOUNT = 2;
 
-    // --- Stage Structure (For simple color themes) ---
+    // --- Stage Structure ---
     private static class Stage {
         String name;
         Color topColor;
@@ -42,17 +43,28 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
+    // --- Asset Structure ---
+    private static class FighterAssets {
+        BufferedImage idleSprite;
+        BufferedImage[] runSprites;
+
+        public FighterAssets(BufferedImage idle, BufferedImage[] run) {
+            this.idleSprite = idle;
+            this.runSprites = run;
+        }
+    }
+
     // --- 2. FIELDS ---
     private Timer timer;
     private int state = START_MENU;
 
     // ASSETS
-    private BufferedImage baseSpriteSheet;
-    private BufferedImage idleSprite;
-    private BufferedImage[] runSprites;
+    private ArrayList<FighterAssets> fighterAssetSets;
 
     // CHARACTER SELECT FIELDS
-    private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW, Color.CYAN};
+    // Reduced to 4 available colors
+    private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW};
+    private final int ASSET_SET_COUNT = 4; // Matches the 4 colors/assets
     private int p1SelectionIndex = 0;
     private int p2SelectionIndex = 1;
 
@@ -65,8 +77,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     };
     private int selectedStageIndex = 0;
 
-    private int p1Stocks; // Tracks P1's remaining stocks
-    private int p2Stocks; // Tracks P2's remaining stocks
+    private int p1Stocks;
+    private int p2Stocks;
 
     private Fighter player1, player2;
 
@@ -87,65 +99,83 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         setFocusable(true);
         addKeyListener(this);
 
-        loadImages(); // Load sprites before initializing fighters
+        loadImages();
 
         timer = new Timer(1000 / GAME_FPS, this);
         timer.start();
     }
 
     private void loadImages() {
-        try {
-            // Load the main sprite sheet
-            baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet.png"));
+        fighterAssetSets = new ArrayList<>();
+        final int FRAME_SIZE = Fighter.SPRITE_SIZE;
+        final int FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
 
-            final int FRAME_SIZE = Fighter.SPRITE_SIZE;
-            final int FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
+        // Load assets for the 4 unique fighter sheets (0, 1, 2, 3)
+        for (int i = 0; i < ASSET_SET_COUNT; i++) {
+            BufferedImage idle = null;
+            BufferedImage[] run = new BufferedImage[FRAME_COUNT];
 
-            // Check if the sheet is large enough horizontally for the expected frames
-            if (baseSpriteSheet.getWidth() < FRAME_SIZE * (FRAME_COUNT + 1)) {
-                throw new IOException("Sprite sheet width is too small for 1 idle frame and 4 run frames.");
+            try {
+                // Filename depends on the asset set index
+                String filename = "assets/fighter_sheet_" + i + ".png";
+                BufferedImage baseSheet = ImageIO.read(new File(filename));
+
+                if (baseSheet == null) {
+                    throw new IOException("Failed to read image data for " + filename);
+                }
+
+                // Safety Checks
+                if (baseSheet.getHeight() < FRAME_SIZE) {
+                    throw new IOException("Sprite sheet height is too small for frame size.");
+                }
+                if (baseSheet.getWidth() < FRAME_SIZE * (FRAME_COUNT + 1)) {
+                    throw new IOException("Sprite sheet width is too small for 1 idle frame and " + FRAME_COUNT + " run frames.");
+                }
+
+                // 1. Slice Idle Sprite (Column 0, x=0)
+                idle = baseSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+
+                // 2. Slice Running Sprites (Starting immediately after idle, Columns 1 to 4)
+                for (int j = 0; j < FRAME_COUNT; j++) {
+                    int xOffset = (j + 1) * FRAME_SIZE;
+                    run[j] = baseSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
+                }
+
+                fighterAssetSets.add(new FighterAssets(idle, run));
+
+            } catch (IOException e) {
+                System.err.println("Error loading asset set " + i + ": " + e.getMessage() + ". Using fallback.");
+
+                // --- FALLBACK FIX: Define Graphics2D explicitly for the fallback image ---
+                idle = new BufferedImage(FRAME_SIZE, FRAME_SIZE, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2_fallback = idle.createGraphics();
+                g2_fallback.setColor(availableColors[i]);
+                g2_fallback.fillRect(0, 0, FRAME_SIZE, FRAME_SIZE);
+                g2_fallback.dispose();
+                // --------------------------------------------------------------------------
+
+                for (int j = 0; j < FRAME_COUNT; j++) {
+                    run[j] = idle;
+                }
+                fighterAssetSets.add(new FighterAssets(idle, run));
             }
-            if (baseSpriteSheet.getHeight() < FRAME_SIZE) {
-                throw new IOException("Sprite sheet height is too small for frame size.");
-            }
-
-            // 1. Slice Idle Sprite (Column 0, x=0)
-            idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
-
-            // 2. Slice Running Sprites (Starting immediately after idle, Columns 1 to 4)
-            runSprites = new BufferedImage[FRAME_COUNT];
-
-            for (int i = 0; i < FRAME_COUNT; i++) {
-                // Slicing starts at Column 1 (50px offset) for the run cycle
-                int xOffset = (i + 1) * FRAME_SIZE;
-
-                // Use the precise width and height of a single frame
-                runSprites[i] = baseSpriteSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
-            }
-
-        } catch (IOException e) {
-            System.err.println("Error loading sprite sheet: " + e.getMessage());
-            baseSpriteSheet = null; // Ensure we rely on fallback if load fails
-        } catch (Exception e) {
-            System.err.println("General error during image loading: " + e.getMessage());
-            baseSpriteSheet = null;
         }
+
+        // ** Removed the Slot 4 (Cyan) reuse logic, as availableColors is now 4 long **
     }
 
     private void initializeFighters() {
-        if (baseSpriteSheet == null) {
-            // Fallback: Create dummy images if the load failed
-            idleSprite = new BufferedImage(Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, BufferedImage.TYPE_INT_ARGB);
-            runSprites = new BufferedImage[Fighter.RUN_FRAME_COUNT];
-            for (int i=0; i < runSprites.length; i++) {
-                runSprites[i] = idleSprite;
-            }
-        }
-
         // Ensure players don't select the same color
         if (p1SelectionIndex == p2SelectionIndex) {
             p2SelectionIndex = (p2SelectionIndex + 1) % availableColors.length;
         }
+
+        // Determine which asset set to use for each player (0-3, matching colors 0-3)
+        int p1AssetIndex = p1SelectionIndex;
+        int p2AssetIndex = p2SelectionIndex;
+
+        FighterAssets p1Assets = fighterAssetSets.get(p1AssetIndex);
+        FighterAssets p2Assets = fighterAssetSets.get(p2AssetIndex);
 
         // Initialize stocks
         p1Stocks = INITIAL_STOCKS;
@@ -154,23 +184,26 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         Color color1 = availableColors[p1SelectionIndex];
         Color color2 = availableColors[p2SelectionIndex];
 
+        // Determine start Y based on the dynamic SPRITE_SIZE
+        int startY = GROUND_Y - Fighter.SPRITE_SIZE;
+
         // Player 1 (Keyset 1)
         player1 = new Fighter(
-                P1_START_X, GROUND_Y, color1,
+                P1_START_X, startY, color1,
                 KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W,
                 KeyEvent.VK_F, KeyEvent.VK_G,
                 KeyEvent.VK_S,
                 KeyEvent.VK_E, KeyEvent.VK_R,
-                idleSprite, runSprites // Pass loaded sprites
+                p1Assets.idleSprite, p1Assets.runSprites
         );
         // Player 2 (Keyset 2)
         player2 = new Fighter(
-                P2_START_X, GROUND_Y, color2,
+                P2_START_X, startY, color2,
                 KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP,
                 KeyEvent.VK_L, KeyEvent.VK_K,
                 KeyEvent.VK_DOWN,
                 KeyEvent.VK_I, KeyEvent.VK_O,
-                idleSprite, runSprites // Pass loaded sprites
+                p2Assets.idleSprite, p2Assets.runSprites
         );
     }
 
@@ -192,15 +225,15 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             if (roundEndTimer > 0) {
                 roundEndTimer--;
                 if (roundEndTimer <= 0) {
-                    // *** Reset health and state immediately before starting next round ***
+                    // Reset health and state immediately before starting next round
                     player1.resetHealth();
                     player2.resetHealth();
 
                     // Reset positions for start of round
                     player1.setX(P1_START_X);
-                    player1.setY(GROUND_Y - player1.getRect().height);
+                    player1.setY(GROUND_Y - Fighter.SPRITE_SIZE);
                     player2.setX(P2_START_X);
-                    player2.setY(GROUND_Y - player2.getRect().height);
+                    player2.setY(GROUND_Y - Fighter.SPRITE_SIZE);
 
                     roundEndMessage = "";
                     showFightText = true;
@@ -465,34 +498,39 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.setFont(new Font("Arial", Font.BOLD, 24));
         g.drawString(label, x, y - 40);
 
+        // Loop runs 4 times for the 4 available colors/sprites
         for (int i = 0; i < availableColors.length; i++) {
             int boxX = x + i * 60;
 
-            // 1. Draw the actual Sprite
-            if (idleSprite != null) {
-                // Use the loaded image and draw it at the correct size
-                g.drawImage(idleSprite, boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, null);
+            // 1. Determine which asset set to use for this color index
+            int assetIndex = i; // Asset index matches color index (0-3)
+
+            // 2. Draw the actual Sprite or fallback
+            if (fighterAssetSets.size() > assetIndex && fighterAssetSets.get(assetIndex).idleSprite != null) {
+                // Draw the loaded sprite
+                BufferedImage sprite = fighterAssetSets.get(assetIndex).idleSprite;
+                g.drawImage(sprite, boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, null);
             } else {
                 // Fallback: Draw the old colored circle if sprites failed to load
                 g.setColor(availableColors[i]);
                 g.fillOval(boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE);
             }
 
-            // 2. Draw Selection Outline
+            // 3. Draw Selection Outline
             if (i == selectionIndex) {
                 g.setColor(Color.WHITE);
                 Graphics2D g2 = (Graphics2D) g;
                 Stroke oldStroke = g2.getStroke();
                 g2.setStroke(new BasicStroke(3));
-                // Draw a box around the selected color/sprite
                 g2.drawRect(boxX - 5, y - 5, Fighter.SPRITE_SIZE + 10, Fighter.SPRITE_SIZE + 10);
                 g2.setStroke(oldStroke);
             }
 
-            // 3. Draw X over the opponent's currently selected color (to prevent duplicate selection view)
+            // 4. Draw X over the opponent's currently selected color
             if (i == (label.contains("PLAYER 1") ? p2SelectionIndex : p1SelectionIndex) && i != selectionIndex) {
                 g.setColor(Color.BLACK);
-                g.drawString("X", boxX + 15, y + 35);
+                g.setFont(new Font("Arial", Font.BOLD, 24));
+                g.drawString("X", boxX + 15, y + Fighter.SPRITE_SIZE - 5);
             }
         }
     }

@@ -3,20 +3,20 @@ import java.awt.image.BufferedImage;
 
 public class Fighter {
     // --- Constants ---
-    // FIXED: Using the actual asset height (24px)
-    public static final int SPRITE_SIZE = 24;
     private static final int SCREEN_WIDTH = 800;
     private static final int MOVEMENT_SPEED = 5;
     private static final int JUMP_VELOCITY = -15;
     private static final int GRAVITY_ACCELERATION = 1;
     private static final int GROUND_Y = 400;
 
+    // Physical Size (Set to 24px wide/high to match the user's spritesheet)
+    public static final int SPRITE_SIZE = 24;
+
     // Attack and Animation
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
-    // FIXED: Height now matches sprite size
     private static final int STAND_HEIGHT = SPRITE_SIZE;
-    private static final int CROUCH_HEIGHT = 16; // Scaled crouching height
+    private static final int CROUCH_HEIGHT = (int)(SPRITE_SIZE * 0.6); // 60% of standing height
 
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
@@ -24,8 +24,8 @@ public class Fighter {
     // Attack Hitbox Constants
     private static final int ATTACK_HITBOX_WIDTH = 30;
     private static final int ATTACK_HITBOX_HEIGHT = 20;
-    private static final int STAND_ATTACK_OFFSET_Y = 15;
-    private static final int CROUCH_ATTACK_OFFSET_Y = 5;
+    private static final int STAND_ATTACK_OFFSET_Y = 5; // Mid-level hit (Adjusted for 24px sprite)
+    private static final int CROUCH_ATTACK_OFFSET_Y = 0;  // Low hit (Starts at sprite top)
 
     // Dashing
     private static final int DASH_DISTANCE = 100; // Total distance to travel
@@ -52,7 +52,7 @@ public class Fighter {
 
     // --- Private Fields (Encapsulation) ---
     private int x, y;
-    private final int width = SPRITE_SIZE; // Use SPRITE_SIZE
+    private final int width = SPRITE_SIZE;
     private final int MAX_X_BOUND = SCREEN_WIDTH - width;
 
     private int height;
@@ -125,6 +125,7 @@ public class Fighter {
         if (knockdownTimer > 0) {
             knockdownTimer--;
 
+            // Apply gravity/fall until ground is reached
             if (y < GROUND_Y - height) {
                 y += velY;
                 velY += GRAVITY_ACCELERATION;
@@ -133,26 +134,33 @@ public class Fighter {
                 velY = 0;
                 isKnockedDown = true;
             }
+            // Apply knockback velocity (velX)
             x += velX;
             velX *= 0.85;
 
             if (knockdownTimer == 0) {
+                // End of knockdown: Stand up, start invulnerability
                 isKnockedDown = false;
                 invulnerabilityTimer = WAKEUP_INVULNERABILITY;
             }
-            return;
+            return; // EXIT: NO input or other physics if in knockdown
         }
 
         // --- 2. HANDLE STUN/KNOCKBACK ---
         if (stunTimer > 0) {
             stunTimer--;
+            // Apply knockback velocity (velX)
             x += velX;
             velX *= 0.85;
 
+            // Check if knockback has dissipated enough to restore control
             if (Math.abs(velX) < 1.0) {
                 velX = 0;
             }
-            return;
+            if (stunTimer == 0 && velX == 0) {
+                // Stun ends only when timer and movement stop
+            }
+            return; // EXIT: NO user input if in stun
         }
 
         // --- 3. HANDLE DASH STATE ---
@@ -160,10 +168,11 @@ public class Fighter {
 
         if (dashTimer > 0) {
             dashTimer--;
+            // Apply fixed dash velocity
             x += velX;
             if (dashTimer == 0) {
                 isDashing = false;
-                velX = 0;
+                velX = 0; // Stop horizontal movement after dash frames expire
             }
         }
 
@@ -196,17 +205,17 @@ public class Fighter {
             }
         }
 
-        // 4d. User Movement and Running State Check (Only move if NOT dashing, NOT stunned, and velX has stopped)
+        // 4d. User Movement and Running State Check
         isRunning = false;
         if (!isDashing && velX == 0) {
             if (!isCrouching) {
                 if (keys[leftKey]) {
                     x -= MOVEMENT_SPEED;
-                    isRunning = true; // Set run flag
+                    isRunning = true;
                 }
                 if (keys[rightKey]) {
                     x += MOVEMENT_SPEED;
-                    isRunning = true; // Set run flag
+                    isRunning = true;
                 }
             }
         }
@@ -304,13 +313,14 @@ public class Fighter {
         if (this.superMeter > MAX_METER) this.superMeter = MAX_METER;
     }
 
-    // --- Dash Methods (Unchanged) ---
+    // --- Dash Methods ---
 
     private boolean startDash(int directionMultiplier) {
         if (dashCooldown == 0 && stunTimer == 0 && onGround) {
             isDashing = true;
             dashTimer = DASH_FRAMES;
             dashCooldown = DASH_COOLDOWN;
+            // Calculate fixed velocity for the dash
             velX = (float) (directionMultiplier * DASH_DISTANCE) / DASH_FRAMES;
             return true;
         }
@@ -325,7 +335,7 @@ public class Fighter {
         return startDash(-this.direction);
     }
 
-    // --- Attack & Damage Logic (Unchanged) ---
+    // --- Attack & Damage Logic ---
 
     public Rectangle getAttackRect() {
         if (isAttackActive()) {
@@ -396,9 +406,10 @@ public class Fighter {
         gainMeter(METER_GAIN_TAKEN);
 
         boolean isSuper = damage == 50;
-        int knockbackSign = attackerDirection * -1;
+        int knockbackSign = attackerDirection * -1; // Push away from attacker
 
         if (isSuper) {
+            // Apply Knockdown State
             knockdownTimer = KNOCKDOWN_DURATION;
             velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_HEAVY);
 
@@ -407,6 +418,7 @@ public class Fighter {
             }
 
         } else {
+            // Apply Regular Stun State
             stunTimer = REGULAR_STUN_DURATION;
             velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_LIGHT);
         }
@@ -423,7 +435,7 @@ public class Fighter {
         if (runSprites != null && runSprites[0] != null && isRunning && onGround) {
             currentSprite = runSprites[frameIndex];
         }
-        // NOTE: Add logic here later for jumping, attacking, etc.
+        // NOTE: Add logic here later for jumping, attacking, crouching, etc.
 
         // 2. Invulnerability Flash Check
         boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
