@@ -63,3 +63,11 @@ The game is designed for two players sharing a single keyboard.
 2. Compile and run the `FightingGame` class
 3. Press ENTER to start the game
 4. Enjoy the match!
+
+## Future Updates
+
+Planned features and improvements for upcoming versions:
+
+- **Local Multiplayer Enhancement**: Support for separate keyboards and game controllers, allowing each player to use their own dedicated input device instead of sharing a single keyboard
+- **AI Mode**: Single-player mode with computer-controlled opponents featuring different difficulty levels and fighting styles
+- **Multiple Input Device Support**: Full compatibility with various controllers (Xbox, PlayStation, generic gamepads) alongside individual keyboard configurations for maximum flexibility
