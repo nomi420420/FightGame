@@ -8,26 +8,39 @@ public class Fighter {
     private static final int GRAVITY_ACCELERATION = 1;
     private static final int GROUND_Y = 400;
 
-    // REGULAR ATTACK CONSTANTS
+    // ATTACK CONSTANTS
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
-
-    // NEW SUPER ATTACK CONSTANTS
-    private static final int SUPER_ATTACK_DURATION = 30; // Slightly longer animation
+    private static final int SUPER_ATTACK_DURATION = 30;
     private static final int SUPER_ACTIVE_HIT_FRAME = 15;
-    private static final int SUPER_COOLDOWN_FRAMES = 25 * 60; // 25 seconds * 60 FPS
+    private static final int SUPER_COOLDOWN_FRAMES = 25 * 60; // 1500 frames (25 seconds)
 
     private static final int STAND_HEIGHT = 50;
     private static final int CROUCH_HEIGHT = 30;
 
     // BLOCKING CONSTANTS
-    private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
+    private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds
 
-    // ATTACK HITBOX CONSTANTS
+    // HITBOX CONSTANTS
     private static final int ATTACK_HITBOX_WIDTH = 30;
     private static final int ATTACK_HITBOX_HEIGHT = 20;
     private static final int STAND_ATTACK_OFFSET_Y = 15;
     private static final int CROUCH_ATTACK_OFFSET_Y = 5;
+
+    // DASH/BACKSTEP CONSTANTS
+    private static final int DASH_DISTANCE_PER_FRAME = 12;
+    private static final int DASH_DURATION = 8;
+    private static final int DASH_COOLDOWN = 45;
+
+    // KNOCKBACK & STUN CONSTANTS
+    private static final int KNOCKBACK_STRENGTH = 12;
+    private static final int REGULAR_STUN_DURATION = 10; // New: For regular hits
+    private static final float KNOCKBACK_DECAY = 0.85f;
+
+    // --- KNOCKDOWN CONSTANTS ---
+    private static final int KNOCKDOWN_DURATION = 90;
+    private static final int WAKEUP_INVULNERABILITY = 15;
+    private static final int FALL_VELOCITY = -10; // Initial upward velocity when knocked back
 
     // --- Private Fields (Encapsulation) ---
     private int x, y;
@@ -37,13 +50,14 @@ public class Fighter {
     private int height;
     private final Color color;
     private int velY = 0;
+    private int velX = 0;
     private boolean onGround = true;
     private int health = 100;
 
     // ATTACK COOLDOWNS/STATES
-    private int attackCooldown = 0; // Cooldown for the regular attack
-    private int superAttackCooldown = 0; // Cooldown for the super attack (25 seconds)
-    public boolean isSuperActive = false; // Flag to track which attack is running
+    private int attackCooldown = 0;
+    private int superAttackCooldown = 0;
+    private boolean isSuperActive = false;
     private boolean hasHit = false;
 
     private int direction = 1;
@@ -53,10 +67,24 @@ public class Fighter {
     private int blockCooldown = 0;
     private boolean isBlockOnCooldown = false;
 
-    // --- Public Key Fields (NEW superAttackKey) ---
-    public final int leftKey, rightKey, jumpKey, attackKey, crouchKey, superAttackKey;
+    // DASH FIELDS
+    private int dashTimer = 0;
+    private int dashCooldownTimer = 0;
+    private int dashDirection = 0;
+    private boolean isDashing = false;
 
-    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int crouch, int superAttack) {
+    // STUN/KNOCKDOWN FIELDS
+    private int stunTimer = 0;
+    private boolean isStunned = false;
+    private int knockdownTimer = 0; // NEW
+    private boolean isKnockedDown = false; // NEW
+    private int invulnerabilityTimer = 0; // NEW
+
+    // --- Public Key Fields ---
+    public final int leftKey, rightKey, jumpKey, attackKey, crouchKey, superAttackKey;
+    public final int dashForwardKey, dashBackKey;
+
+    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int crouch, int superAttack, int dashForward, int dashBack) {
         this.x = x;
         this.y = y;
         this.color = color;
@@ -65,33 +93,94 @@ public class Fighter {
         this.jumpKey = jump;
         this.attackKey = attack;
         this.crouchKey = crouch;
-        this.superAttackKey = superAttack; // Store new key
+        this.superAttackKey = superAttack;
+        this.dashForwardKey = dashForward;
+        this.dashBackKey = dashBack;
         this.height = STAND_HEIGHT;
     }
 
     public void update(boolean[] keys) {
-        // 1. Block Cooldown Logic
+        // 1. Cooldown Timers
         if (blockCooldown > 0) {
             blockCooldown--;
             if (blockCooldown == 0) {
                 isBlockOnCooldown = false;
             }
         }
-
-        // 2. Super Attack Global Cooldown
         if (superAttackCooldown > 0) {
             superAttackCooldown--;
         }
 
-        // 3. Handle Crouching/Blocking state
+        // --- KNOCKDOWN LOGIC (Highest Priority State) ---
+        if (knockdownTimer > 0) {
+            knockdownTimer--;
+            isKnockedDown = true;
+            isStunned = false;
+
+            // Force fall until grounded
+            if (y < GROUND_Y - height) {
+                y += velY;
+                velY += GRAVITY_ACCELERATION;
+            } else {
+                // Grounded: stop movement
+                y = GROUND_Y - height;
+                velY = 0;
+            }
+
+            // Still apply knockback friction while falling/down
+            x += velX;
+            if (velX != 0) {
+                velX = (int)(velX * KNOCKBACK_DECAY);
+                if (Math.abs(velX) < 1) velX = 0;
+            }
+
+            // Corner Boundary Check (essential during knockdown)
+            if (x < 0) x = 0; else if (x > MAX_X_BOUND) x = MAX_X_BOUND;
+
+            return; // EXIT: NO other actions are processed during knockdown
+        } else if (isKnockedDown) {
+            // End of knockdown: Stand up, start invulnerability, and reset state
+            isKnockedDown = false;
+            invulnerabilityTimer = WAKEUP_INVULNERABILITY;
+        }
+
+        // --- Invulnerability Timer ---
+        if (invulnerabilityTimer > 0) {
+            invulnerabilityTimer--;
+        }
+
+        // --- STUN LOGIC ---
+        if (stunTimer > 0) {
+            stunTimer--;
+            isStunned = true;
+        } else {
+            isStunned = false;
+        }
+        // ------------------
+
+        // --- DASH LOGIC ---
+        if (dashCooldownTimer > 0) {
+            dashCooldownTimer--;
+        }
+
+        if (dashTimer > 0) {
+            dashTimer--;
+            isDashing = true;
+            x += dashDirection * DASH_DISTANCE_PER_FRAME;
+        } else {
+            isDashing = false;
+        }
+        // ------------------
+
+        // 2. Crouching/Blocking state
         isCrouching = keys[crouchKey];
         if (isCrouching && onGround && !isBlockOnCooldown) {
             this.isBlocking = true;
-        } else if (!isCrouching || !onGround) {
+        } else if (!isCrouching || !onGround || isStunned) {
             this.isBlocking = false;
         }
 
-        // 4. Height and Y adjustment for crouching
+        // 3. Height and Y adjustment
         if (isCrouching) {
             this.height = CROUCH_HEIGHT;
             this.y = GROUND_Y - CROUCH_HEIGHT;
@@ -102,8 +191,8 @@ public class Fighter {
             }
         }
 
-        // 5. Movement
-        if (!isCrouching) {
+        // 4. Movement: only allowed if NOT dashing AND NOT stunned
+        if (!isCrouching && !isDashing && !isStunned) {
             if (keys[leftKey]) {
                 x -= MOVEMENT_SPEED;
             }
@@ -112,20 +201,30 @@ public class Fighter {
             }
         }
 
+        // --- KNOCKBACK MOVEMENT & FRICTION ---
+        x += velX;
+        if (velX != 0) {
+            velX = (int)(velX * KNOCKBACK_DECAY);
+            if (Math.abs(velX) < 1) velX = 0;
+        }
+        // ------------------------------------------
+
         // Corner Boundary Check
         if (x < 0) {
             x = 0;
+            velX = 0;
         } else if (x > MAX_X_BOUND) {
             x = MAX_X_BOUND;
+            velX = 0;
         }
 
-        // 6. Jump
-        if (keys[jumpKey] && onGround && !isCrouching) {
+        // 5. Jump: only allowed if NOT dashing AND NOT stunned
+        if (keys[jumpKey] && onGround && !isCrouching && !isDashing && !isStunned) {
             velY = JUMP_VELOCITY;
             onGround = false;
         }
 
-        // 7. Gravity
+        // 6. Gravity
         y += velY;
         if (y >= GROUND_Y - this.height) {
             y = GROUND_Y - this.height;
@@ -135,14 +234,33 @@ public class Fighter {
             velY += GRAVITY_ACCELERATION;
         }
 
-        // 8. Attack Cooldown
+        // 7. Attack Cooldown
         if (attackCooldown > 0) {
             attackCooldown--;
             if (attackCooldown == 0) {
                 hasHit = false;
-                isSuperActive = false; // Reset super active flag if regular attack finishes
+                isSuperActive = false;
             }
         }
+    }
+
+    // --- DASH METHODS ---
+    private boolean initiateDash(int directionMultiplier) {
+        if (onGround && !isDashing && dashCooldownTimer == 0 && !isStunned && !isKnockedDown) {
+            dashTimer = DASH_DURATION;
+            dashCooldownTimer = DASH_COOLDOWN;
+            dashDirection = this.direction * directionMultiplier;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean dashForward() {
+        return initiateDash(1);
+    }
+
+    public boolean dashBack() {
+        return initiateDash(-1);
     }
 
     // --- Getters and Setters ---
@@ -150,8 +268,11 @@ public class Fighter {
     public int getHealth() { return health; }
     public int getDirection() { return direction; }
     public boolean isBlockOnCooldown() { return isBlockOnCooldown; }
+    public boolean isStunned() { return isStunned; }
+    public boolean isInvulnerable() { return invulnerabilityTimer > 0; } // NEW Getter for Drawing
     public int getX() { return x; }
-    public int getSuperCooldown() { return superAttackCooldown; } // New getter for UI
+    public int getSuperCooldown() { return superAttackCooldown; }
+    public boolean isSuperActive() { return isSuperActive; }
 
     public void setDirection(int newDirection) {
         if (newDirection == 1 || newDirection == -1) {
@@ -161,43 +282,33 @@ public class Fighter {
 
     public void setX(int newX) {
         this.x = newX;
-        if (x < 0) {
-            x = 0;
-        } else if (x > MAX_X_BOUND) {
-            x = MAX_X_BOUND;
-        }
+        if (x < 0) x = 0; else if (x > MAX_X_BOUND) x = MAX_X_BOUND;
     }
 
     // --- Attack & Damage Logic ---
-
-    /** Initiates a regular attack if possible. */
     public boolean attack() {
-        if (attackCooldown == 0 && onGround && superAttackCooldown == 0) {
+        if (attackCooldown == 0 && !isDashing && !isStunned && !isKnockedDown) {
             attackCooldown = ATTACK_DURATION;
             hasHit = false;
-            isSuperActive = false; // Ensure it's marked as regular
+            isSuperActive = false;
             return true;
         }
         return false;
     }
 
-    /** Initiates a super attack if cooldown is finished. */
     public boolean superAttack() {
-        // Can only start if both attack cooldowns are 0 AND on the ground
-        if (attackCooldown == 0 && superAttackCooldown == 0 && onGround) {
-            attackCooldown = SUPER_ATTACK_DURATION; // Use attackCooldown as the active timer
+        if (attackCooldown == 0 && superAttackCooldown == 0 && !isDashing && !isStunned && !isKnockedDown) {
+            attackCooldown = SUPER_ATTACK_DURATION;
             hasHit = false;
-            isSuperActive = true; // Mark as super attack
-            superAttackCooldown = SUPER_COOLDOWN_FRAMES; // Start the 25s global cooldown
+            isSuperActive = true;
+            superAttackCooldown = SUPER_COOLDOWN_FRAMES;
             return true;
         }
         return false;
     }
 
-    /** Calculates the attack hitbox based on the fighter's state and active attack type. */
     public Rectangle getAttackRect() {
         if (isAttackActive()) {
-            // Determine vertical offset based on crouching (applies to both types)
             int offsetY;
             if (isCrouching) {
                 offsetY = CROUCH_ATTACK_OFFSET_Y;
@@ -205,28 +316,19 @@ public class Fighter {
                 offsetY = STAND_ATTACK_OFFSET_Y;
             }
 
-            // Super attack has a larger hitbox area
             int rectWidth = isSuperActive ? ATTACK_HITBOX_WIDTH * 2 : ATTACK_HITBOX_WIDTH;
             int rectHeight = isSuperActive ? ATTACK_HITBOX_HEIGHT + 10 : ATTACK_HITBOX_HEIGHT;
 
             int offsetX = direction == 1 ? width : -rectWidth;
 
-            return new Rectangle(
-                    x + offsetX,
-                    y + offsetY,
-                    rectWidth,
-                    rectHeight
-            );
+            return new Rectangle(x + offsetX, y + offsetY, rectWidth, rectHeight);
         }
         return new Rectangle(0, 0, 0, 0);
     }
 
-    /** Checks if the currently running attack animation is in its hit window. */
     public boolean isAttackActive() {
         int hitFrame = isSuperActive ? SUPER_ACTIVE_HIT_FRAME : ACTIVE_HIT_FRAME;
         int duration = isSuperActive ? SUPER_ATTACK_DURATION : ATTACK_DURATION;
-
-        // Attack is active during the second half of the animation
         return attackCooldown > duration - hitFrame && attackCooldown > 0;
     }
 
@@ -239,6 +341,10 @@ public class Fighter {
     }
 
     public void takeDamage(int damage, int attackerDirection) {
+        if (invulnerabilityTimer > 0 || isKnockedDown) {
+            return; // Ignore damage if invulnerable or already down
+        }
+
         boolean isFacingAttack = (attackerDirection != this.direction);
 
         if (isBlocking && isFacingAttack) {
@@ -247,6 +353,19 @@ public class Fighter {
             this.isBlocking = false;
         } else {
             this.health -= damage;
+
+            // --- KNOCKDOWN TRIGGER ---
+            if (damage >= 50) {
+                isStunned = false;
+                knockdownTimer = KNOCKDOWN_DURATION;
+                onGround = false;
+                velY = FALL_VELOCITY; // Launch upwards
+                velX = attackerDirection * KNOCKBACK_STRENGTH;
+            } else {
+                // Regular hit stun/knockback
+                stunTimer = REGULAR_STUN_DURATION;
+                velX = attackerDirection * (KNOCKBACK_STRENGTH / 3);
+            }
         }
 
         if (this.health < 0) {
@@ -256,21 +375,36 @@ public class Fighter {
 
     // --- Drawing ---
     public void draw(Graphics g) {
-        g.setColor(color);
-        g.fillOval(x, y, width, height);
+        // Invulnerability Flash (Highest Priority Visual)
+        if (isInvulnerable() && (invulnerabilityTimer % 4 == 0)) { // Flash white every 4 frames
+            g.setColor(Color.WHITE);
+            g.fillOval(x, y, width, height);
+            return;
+        }
+
+        // Draw character slightly brighter if stunned (visual feedback)
+        if (isStunned) {
+            g.setColor(Color.WHITE);
+            g.fillOval(x - 5, y - 5, width + 10, height + 10);
+            g.setColor(color);
+            g.fillOval(x, y, width, height);
+        } else {
+            g.setColor(color);
+            g.fillOval(x, y, width, height);
+        }
 
         // Draw block indicators
         if (isBlocking) {
-            g.setColor(new Color(50, 200, 255, 180)); // Active Block Shield (Cyan)
+            g.setColor(new Color(50, 200, 255, 180));
             g.fillRect(x - 5, y - 5, width + 10, height + 10);
         } else if (isBlockOnCooldown()) {
-            g.setColor(new Color(255, 50, 50, 80)); // Block Cooldown Indicator (Faded Red)
+            g.setColor(new Color(255, 50, 50, 80));
             g.fillRect(x - 5, y - 5, width + 10, height + 10);
         }
 
         // Draw the attack indicator
         if (isAttackActive()) {
-            g.setColor(isSuperActive ? Color.MAGENTA : Color.YELLOW); // Super Attack is MAGENTA
+            g.setColor(isSuperActive ? Color.MAGENTA : Color.YELLOW);
             Rectangle ar = getAttackRect();
             if (ar.width > 0) {
                 g.fillRect(ar.x, ar.y, ar.width, ar.height);

@@ -19,8 +19,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     // Damage Constants
     private static final int P1_START_X = 200;
     private static final int P2_START_X = 550;
-    private static final int REGULAR_DAMAGE = 10; // Regular attack damage
-    private static final int SUPER_DAMAGE = 50; // Super attack damage (5x stronger)
+    private static final int REGULAR_DAMAGE = 10;
+    private static final int SUPER_DAMAGE = 50;
     private static final int FIGHT_SPLASH_DURATION = 60;
 
     // --- 2. FIELDS ---
@@ -50,15 +50,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     private void initializeFighters() {
-        // Player 1 (Blue) uses G for Super Attack
+        // Player 1: WASD/F (Reg Atk), S (Crouch), G (Super Atk), E (Dash Fwd), R (Dash Back)
         player1 = new Fighter(
                 P1_START_X, GROUND_Y, Color.BLUE,
-                KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W, KeyEvent.VK_F, KeyEvent.VK_S, KeyEvent.VK_G // New Key: VK_G
+                KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W, KeyEvent.VK_F, KeyEvent.VK_S, KeyEvent.VK_G, // Movement/Attack
+                KeyEvent.VK_E, KeyEvent.VK_R // Dash/Backstep
         );
-        // Player 2 (Red) uses K for Super Attack
+        // Player 2: Arrows/L (Reg Atk), DOWN (Crouch), K (Super Atk), I (Dash Fwd), O (Dash Back)
         player2 = new Fighter(
                 P2_START_X, GROUND_Y, Color.RED,
-                KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP, KeyEvent.VK_L, KeyEvent.VK_DOWN, KeyEvent.VK_K // New Key: VK_K
+                KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP, KeyEvent.VK_L, KeyEvent.VK_DOWN, KeyEvent.VK_K, // Movement/Attack
+                KeyEvent.VK_I, KeyEvent.VK_O // Dash/Backstep
         );
     }
 
@@ -85,25 +87,38 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 player2.setDirection(1);
             }
 
-            // --- ATTACK COLLISION LOGIC ---
+            // FIGHTER-TO-FIGHTER COLLISION LOGIC (Push-back)
+            Rectangle r1 = player1.getRect();
+            Rectangle r2 = player2.getRect();
+
+            if (r1.intersects(r2)) {
+                // Determine which direction to push based on relative position
+                if (player1.getX() < player2.getX()) {
+                    player1.setX(player1.getX() - 2);
+                    player2.setX(player2.getX() + 2);
+                } else {
+                    player1.setX(player1.getX() + 2);
+                    player2.setX(player2.getX() - 2);
+                }
+            }
+
+            // ATTACK COLLISION LOGIC
 
             // Check P1 attack vs P2
             if (player1.canHit() && player1.getAttackRect().intersects(player2.getRect())) {
-                // Determine damage based on whether the attack is a Super Attack
-                int damage = player1.isSuperActive ? SUPER_DAMAGE : REGULAR_DAMAGE;
+                int damage = player1.isSuperActive() ? SUPER_DAMAGE : REGULAR_DAMAGE;
                 player2.takeDamage(damage, player1.getDirection());
                 player1.registerHit();
             }
 
             // Check P2 attack vs P1
             if (player2.canHit() && player2.getAttackRect().intersects(player1.getRect())) {
-                // Determine damage based on whether the attack is a Super Attack
-                int damage = player2.isSuperActive ? SUPER_DAMAGE : REGULAR_DAMAGE;
+                int damage = player2.isSuperActive() ? SUPER_DAMAGE : REGULAR_DAMAGE;
                 player1.takeDamage(damage, player2.getDirection());
                 player2.registerHit();
             }
 
-            // --- CHECK FOR GAME END ---
+            // CHECK FOR GAME END
             if (player1.getHealth() <= 0) {
                 winnerText = "Player 2 Wins!";
                 state = GAME_OVER;
@@ -147,6 +162,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             g.setFont(new Font("Arial", Font.PLAIN, 24));
             fm = g.getFontMetrics();
             drawCenteredString(g, "Press ENTER to Start", 300, fm);
+            g.drawString("P1: WASD/F/E/R/G | P2: Arrows/L/I/O/K", 150, 450); // Controls Hint
             drawCenteredString(g, "Press ESC to Quit", 340, fm);
 
         } else if (state == FIGHT) {
@@ -195,7 +211,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.fillRect(x, y, currentWidth, BAR_HEIGHT);
     }
 
-    // NEW Helper method to draw the Super Cooldown indicator
+    // Helper method to draw the Super Cooldown indicator
     private void drawSuperCooldown(Graphics g, int x, int y, int cooldownFrames, Color color) {
         final int MAX_COOLDOWN = 25 * 60; // Max frames (1500)
         final int BAR_WIDTH = 100;
@@ -208,11 +224,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.fillRect(x, y, BAR_WIDTH, BAR_HEIGHT);
 
         if (cooldownFrames > 0) {
-            // Draw cooldown fill (e.g., in black)
             g.setColor(Color.BLACK);
             g.fillRect(x, y, currentWidth, BAR_HEIGHT);
         } else {
-            // Flash green when ready
             g.setColor(Color.GREEN.brighter());
             g.fillRect(x, y, BAR_WIDTH, BAR_HEIGHT);
         }
@@ -237,13 +251,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 System.exit(0);
             }
         } else if (state == FIGHT) {
-            // Regular Attack
+            // Attacks
             if (e.getKeyCode() == player1.attackKey) player1.attack();
             if (e.getKeyCode() == player2.attackKey) player2.attack();
-
-            // Super Attack (New)
             if (e.getKeyCode() == player1.superAttackKey) player1.superAttack();
             if (e.getKeyCode() == player2.superAttackKey) player2.superAttack();
+
+            // Dash/Backstep Input
+            if (e.getKeyCode() == player1.dashForwardKey) player1.dashForward();
+            if (e.getKeyCode() == player1.dashBackKey) player1.dashBack();
+            if (e.getKeyCode() == player2.dashForwardKey) player2.dashForward();
+            if (e.getKeyCode() == player2.dashBackKey) player2.dashBack();
 
         } else if (state == GAME_OVER) {
             if (e.getKeyCode() == KeyEvent.VK_R) {

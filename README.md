@@ -1,19 +1,59 @@
 Java Fighting Game
 
-This is a fast-paced, two-player fighting game built using Java and Swing. It features essential fighting game mechanics, including physics-based movement (gravity and jumping) and strategic blocking with built-in cooldowns to prevent abuse.
+This is a fast-paced, two-player fighting game built using Java and Swing. It features robust, competitive mechanics designed for strategic play and precise timing.
 
-Key Features
+Core Mechanics
 
-The core game logic has been carefully designed for a balanced competitive experience:
+Strategic Blocking: Players can block 100% of damage, but a successful block instantly disables the defense and starts a 2-second cooldown, preventing abuse.
 
-Directional Attacks: Attacks only hit on the side the player is facing, requiring proper positioning.
+Knockdown System: The powerful Super Attack forces the opponent into a Knockdown state, where they fall to the ground. They are briefly invincible as they stand up.
 
-Strategic Crouching: Players can crouch to lower their hitbox, essential for dodging standing attacks.
+Hit Impact: Regular attacks apply a short stun and light knockback, interrupting the opponent's actions.
 
-Dynamic Hitboxes: Attacks have two different hitboxes:
+Dynamic Hitboxes: Attacks have specific vertical properties: Standing attacks hit mid-level (can be dodged by crouching), and crouching attacks hit low (must be blocked).
 
-Standing Attack: Hits mid-level (can be dodged by crouching).
+Movement: Includes quick Dashes and Backsteps for advanced positioning. Fighters automatically turn to face their opponent and are restricted by Corner Boundaries.
 
-Crouching Attack: Hits low (must be blocked).
+Attack Types and Cooldowns
 
-Cooldown Blocking: Blocks absorb 100% of damage, but instantly disable the block and trigger a 2-second cooldown upon successful connection.
+Regular Attack: A standard, quick attack with low cooldown.
+
+Super Attack: High-damage attack that triggers Knockdown and has a long, 25-second cooldown.
+
+Controls
+
+The game is designed for two players sharing a single keyboard.
+
+Player 1 (Blue)
+
+Move Left / Right: A / D
+
+Jump: W
+
+Crouch / Block: S
+
+Regular Attack: F
+
+Super Attack: G
+
+Forward Dash: E
+
+Backstep: R
+
+Player 2 (Red)
+
+Move Left / Right: Left / Right Arrows
+
+Jump: Up Arrow
+
+Crouch / Block: Down Arrow
+
+Regular Attack: L
+
+Super Attack: K
+
+Forward Dash: I
+
+Backstep: O
+
+Start Game: ENTER (used by either player)
