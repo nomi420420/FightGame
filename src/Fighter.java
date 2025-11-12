@@ -1,7 +1,10 @@
 import java.awt.*;
+import java.awt.image.BufferedImage;
 
 public class Fighter {
     // --- Constants ---
+    // FIXED: Using the actual asset height (24px)
+    public static final int SPRITE_SIZE = 24;
     private static final int SCREEN_WIDTH = 800;
     private static final int MOVEMENT_SPEED = 5;
     private static final int JUMP_VELOCITY = -15;
@@ -11,8 +14,9 @@ public class Fighter {
     // Attack and Animation
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
-    private static final int STAND_HEIGHT = 50;
-    private static final int CROUCH_HEIGHT = 30;
+    // FIXED: Height now matches sprite size
+    private static final int STAND_HEIGHT = SPRITE_SIZE;
+    private static final int CROUCH_HEIGHT = 16; // Scaled crouching height
 
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
@@ -42,13 +46,20 @@ public class Fighter {
     public static final double METER_GAIN_HIT = 8.0;
     public static final double METER_GAIN_TAKEN = 4.0;
 
+    // --- ANIMATION CONSTANTS ---
+    public static final int RUN_FRAME_COUNT = 4;
+    private static final int RUN_ANIMATION_SPEED = 5;
+
     // --- Private Fields (Encapsulation) ---
     private int x, y;
-    private final int width = 50;
+    private final int width = SPRITE_SIZE; // Use SPRITE_SIZE
     private final int MAX_X_BOUND = SCREEN_WIDTH - width;
 
     private int height;
     private final Color color;
+    private BufferedImage idleSprite;
+    private BufferedImage[] runSprites;
+
     private int velY = 0;
     private float velX = 0;
     private boolean onGround = true;
@@ -74,16 +85,21 @@ public class Fighter {
     private boolean isDashing = false;
     private int dashCooldown = 0;
 
-    // Attack
+    // Attack and Animation
     private int attackCooldown = 0;
+    private int animationTimer = 0;
+    private int frameIndex = 0;
+    private boolean isRunning = false;
 
     // --- Public Key Fields ---
     public final int leftKey, rightKey, jumpKey, attackKey, superAttackKey, crouchKey, dashFwdKey, dashBackKey;
 
-    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack) {
+    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites) {
         this.x = x;
         this.y = y;
         this.color = color;
+        this.idleSprite = idleSprite;
+        this.runSprites = runSprites;
         this.leftKey = left;
         this.rightKey = right;
         this.jumpKey = jump;
@@ -97,47 +113,46 @@ public class Fighter {
 
     public void update(boolean[] keys) {
 
+        // --- ANIMATION TIMER (Always run) ---
+        animationTimer++;
+        if (animationTimer >= RUN_ANIMATION_SPEED) {
+            animationTimer = 0;
+            frameIndex = (frameIndex + 1) % RUN_FRAME_COUNT;
+        }
+        // ------------------------------------
+
         // --- 1. HANDLE KNOCKDOWN STATE ---
         if (knockdownTimer > 0) {
             knockdownTimer--;
 
-            // Apply gravity/fall until ground is reached
             if (y < GROUND_Y - height) {
                 y += velY;
                 velY += GRAVITY_ACCELERATION;
             } else {
                 y = GROUND_Y - height;
                 velY = 0;
-                // Once stabilized on ground during knockdown, set flag
                 isKnockedDown = true;
             }
-            // Apply knockback velocity (velX)
             x += velX;
             velX *= 0.85;
 
             if (knockdownTimer == 0) {
-                // End of knockdown: Stand up, start invulnerability
                 isKnockedDown = false;
                 invulnerabilityTimer = WAKEUP_INVULNERABILITY;
             }
-            return; // EXIT: NO input or other physics if in knockdown
+            return;
         }
 
         // --- 2. HANDLE STUN/KNOCKBACK ---
         if (stunTimer > 0) {
             stunTimer--;
-            // Apply knockback velocity (velX)
             x += velX;
             velX *= 0.85;
 
-            // Check if knockback has dissipated enough to restore control
             if (Math.abs(velX) < 1.0) {
                 velX = 0;
             }
-            if (stunTimer == 0 && velX == 0) {
-                // Stun ends only when timer and movement stop
-            }
-            return; // EXIT: NO user input if in stun
+            return;
         }
 
         // --- 3. HANDLE DASH STATE ---
@@ -145,13 +160,11 @@ public class Fighter {
 
         if (dashTimer > 0) {
             dashTimer--;
-            // Apply fixed dash velocity
             x += velX;
             if (dashTimer == 0) {
                 isDashing = false;
-                velX = 0; // Stop horizontal movement after dash frames expire
+                velX = 0;
             }
-            // Do NOT return here, allow gravity to apply during dash
         }
 
         // --- 4. INPUT HANDLING (Standard Movement) ---
@@ -183,14 +196,17 @@ public class Fighter {
             }
         }
 
-        // 4d. User Movement (Only move if NOT dashing, NOT stunned, and velX has stopped)
+        // 4d. User Movement and Running State Check (Only move if NOT dashing, NOT stunned, and velX has stopped)
+        isRunning = false;
         if (!isDashing && velX == 0) {
             if (!isCrouching) {
                 if (keys[leftKey]) {
                     x -= MOVEMENT_SPEED;
+                    isRunning = true; // Set run flag
                 }
                 if (keys[rightKey]) {
                     x += MOVEMENT_SPEED;
+                    isRunning = true; // Set run flag
                 }
             }
         }
@@ -248,6 +264,7 @@ public class Fighter {
     public boolean isInvulnerable() { return invulnerabilityTimer > 0; }
     public boolean isKnockedDown() { return isKnockedDown || knockdownTimer > 0; }
 
+    /** Resets health and all status effects for a new round. */
     public void resetHealth() {
         this.health = 100;
         this.isKnockedDown = false;
@@ -259,6 +276,7 @@ public class Fighter {
         this.attackCooldown = 0;
         this.isDashing = false;
         this.dashCooldown = 0;
+        this.superMeter = 0;
     }
 
     public void setDirection(int newDirection) {
@@ -276,19 +294,23 @@ public class Fighter {
         }
     }
 
+    /** Allows GamePanel to reset vertical position during round start. */
+    public void setY(int newY) {
+        this.y = newY;
+    }
+
     public void gainMeter(double amount) {
         this.superMeter += amount;
         if (this.superMeter > MAX_METER) this.superMeter = MAX_METER;
     }
 
-    // --- Dash Methods ---
+    // --- Dash Methods (Unchanged) ---
 
     private boolean startDash(int directionMultiplier) {
         if (dashCooldown == 0 && stunTimer == 0 && onGround) {
             isDashing = true;
             dashTimer = DASH_FRAMES;
             dashCooldown = DASH_COOLDOWN;
-            // Calculate fixed velocity for the dash
             velX = (float) (directionMultiplier * DASH_DISTANCE) / DASH_FRAMES;
             return true;
         }
@@ -303,7 +325,7 @@ public class Fighter {
         return startDash(-this.direction);
     }
 
-    // --- Attack & Damage Logic ---
+    // --- Attack & Damage Logic (Unchanged) ---
 
     public Rectangle getAttackRect() {
         if (isAttackActive()) {
@@ -322,7 +344,6 @@ public class Fighter {
     }
 
     public boolean attack() {
-        // Attack is allowed in the air now, but requires onGround check for crouching
         if (attackCooldown == 0 && stunTimer == 0) {
             attackCooldown = ATTACK_DURATION;
             hasHit = false;
@@ -375,10 +396,9 @@ public class Fighter {
         gainMeter(METER_GAIN_TAKEN);
 
         boolean isSuper = damage == 50;
-        int knockbackSign = attackerDirection * -1; // Push away from attacker
+        int knockbackSign = attackerDirection * -1;
 
         if (isSuper) {
-            // Apply Knockdown State
             knockdownTimer = KNOCKDOWN_DURATION;
             velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_HEAVY);
 
@@ -387,7 +407,6 @@ public class Fighter {
             }
 
         } else {
-            // Apply Regular Stun State
             stunTimer = REGULAR_STUN_DURATION;
             velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_LIGHT);
         }
@@ -395,9 +414,58 @@ public class Fighter {
 
     // --- Drawing ---
     public void draw(Graphics g) {
+        Graphics2D g2 = (Graphics2D) g;
 
-    }
+        // 1. Determine which sprite frame to draw
+        BufferedImage currentSprite = idleSprite;
 
-    public void setY(int i) {
+        // Prioritize Run Animation if applicable
+        if (runSprites != null && runSprites[0] != null && isRunning && onGround) {
+            currentSprite = runSprites[frameIndex];
+        }
+        // NOTE: Add logic here later for jumping, attacking, etc.
+
+        // 2. Invulnerability Flash Check
+        boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
+
+        if (!isFlashing) {
+            if (currentSprite != null) {
+                int drawX = x;
+                int drawWidth = width;
+
+                // FLIPPING LOGIC: Draw the sprite inverted if facing left
+                if (direction == -1) {
+                    drawX = x + width;
+                    drawWidth = -width;
+                }
+
+                // Draw the sprite, using the fighter's width/height constraints
+                g2.drawImage(currentSprite, drawX, y, drawWidth, height, null);
+            } else {
+                // FALLBACK: Draw colored circle if sprite not found
+                g.setColor(color);
+                g.fillOval(x, y, width, height);
+            }
+        }
+
+        // Draw status indicators over the fighter (always draw)
+
+        // Draw block indicators
+        if (isBlocking) {
+            g.setColor(new Color(50, 200, 255, 180));
+            g.fillRect(x - 5, y - 5, width + 10, height + 10);
+        } else if (isBlockOnCooldown()) {
+            g.setColor(new Color(255, 50, 50, 80));
+            g.fillRect(x - 5, y - 5, width + 10, height + 10);
+        }
+
+        // Draw the attack indicator (hitbox visualization)
+        if (isAttackActive()) {
+            g.setColor(Color.YELLOW);
+            Rectangle ar = getAttackRect();
+            if (ar.width > 0) {
+                g.fillRect(ar.x, ar.y, ar.width, ar.height);
+            }
+        }
     }
 }

@@ -1,6 +1,10 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import javax.imageio.ImageIO;
 import java.lang.Math;
 
 public class GamePanel extends JPanel implements KeyListener, ActionListener {
@@ -42,6 +46,11 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private Timer timer;
     private int state = START_MENU;
 
+    // ASSETS
+    private BufferedImage baseSpriteSheet;
+    private BufferedImage idleSprite;
+    private BufferedImage[] runSprites;
+
     // CHARACTER SELECT FIELDS
     private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW, Color.CYAN};
     private int p1SelectionIndex = 0;
@@ -78,11 +87,61 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         setFocusable(true);
         addKeyListener(this);
 
+        loadImages(); // Load sprites before initializing fighters
+
         timer = new Timer(1000 / GAME_FPS, this);
         timer.start();
     }
 
+    private void loadImages() {
+        try {
+            // Load the main sprite sheet
+            baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet.png"));
+
+            final int FRAME_SIZE = Fighter.SPRITE_SIZE;
+            final int FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
+
+            // Check if the sheet is large enough horizontally for the expected frames
+            if (baseSpriteSheet.getWidth() < FRAME_SIZE * (FRAME_COUNT + 1)) {
+                throw new IOException("Sprite sheet width is too small for 1 idle frame and 4 run frames.");
+            }
+            if (baseSpriteSheet.getHeight() < FRAME_SIZE) {
+                throw new IOException("Sprite sheet height is too small for frame size.");
+            }
+
+            // 1. Slice Idle Sprite (Column 0, x=0)
+            idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+
+            // 2. Slice Running Sprites (Starting immediately after idle, Columns 1 to 4)
+            runSprites = new BufferedImage[FRAME_COUNT];
+
+            for (int i = 0; i < FRAME_COUNT; i++) {
+                // Slicing starts at Column 1 (50px offset) for the run cycle
+                int xOffset = (i + 1) * FRAME_SIZE;
+
+                // Use the precise width and height of a single frame
+                runSprites[i] = baseSpriteSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error loading sprite sheet: " + e.getMessage());
+            baseSpriteSheet = null; // Ensure we rely on fallback if load fails
+        } catch (Exception e) {
+            System.err.println("General error during image loading: " + e.getMessage());
+            baseSpriteSheet = null;
+        }
+    }
+
     private void initializeFighters() {
+        if (baseSpriteSheet == null) {
+            // Fallback: Create dummy images if the load failed
+            idleSprite = new BufferedImage(Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, BufferedImage.TYPE_INT_ARGB);
+            runSprites = new BufferedImage[Fighter.RUN_FRAME_COUNT];
+            for (int i=0; i < runSprites.length; i++) {
+                runSprites[i] = idleSprite;
+            }
+        }
+
         // Ensure players don't select the same color
         if (p1SelectionIndex == p2SelectionIndex) {
             p2SelectionIndex = (p2SelectionIndex + 1) % availableColors.length;
@@ -101,7 +160,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W,
                 KeyEvent.VK_F, KeyEvent.VK_G,
                 KeyEvent.VK_S,
-                KeyEvent.VK_E, KeyEvent.VK_R
+                KeyEvent.VK_E, KeyEvent.VK_R,
+                idleSprite, runSprites // Pass loaded sprites
         );
         // Player 2 (Keyset 2)
         player2 = new Fighter(
@@ -109,7 +169,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP,
                 KeyEvent.VK_L, KeyEvent.VK_K,
                 KeyEvent.VK_DOWN,
-                KeyEvent.VK_I, KeyEvent.VK_O
+                KeyEvent.VK_I, KeyEvent.VK_O,
+                idleSprite, runSprites // Pass loaded sprites
         );
     }
 
@@ -131,17 +192,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             if (roundEndTimer > 0) {
                 roundEndTimer--;
                 if (roundEndTimer <= 0) {
-                    // *** FIX: Reset health and state immediately before starting next round ***
+                    // *** Reset health and state immediately before starting next round ***
                     player1.resetHealth();
                     player2.resetHealth();
 
-                    // Time to start the next round
-                    roundEndMessage = "";
                     // Reset positions for start of round
                     player1.setX(P1_START_X);
                     player1.setY(GROUND_Y - player1.getRect().height);
                     player2.setX(P2_START_X);
                     player2.setY(GROUND_Y - player2.getRect().height);
+
+                    roundEndMessage = "";
                     showFightText = true;
                     fightTimer = FIGHT_SPLASH_DURATION;
                 }
@@ -216,7 +277,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     finalWinner = "Player 2 Wins!";
                 } else {
                     roundEndMessage = "Player 2 Wins Round!";
-                    // Health reset is now handled in roundEndTimer == 0 block
                 }
             }
 
@@ -229,7 +289,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     finalWinner = "Player 1 Wins!";
                 } else {
                     roundEndMessage = "Player 1 Wins Round!";
-                    // Health reset is now handled in roundEndTimer == 0 block
                 }
             }
 
@@ -261,15 +320,15 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         Graphics2D g2 = (Graphics2D) g;
 
         // --- BACKGROUND DRAWING ---
-        Color top = (state == FIGHT || state == GAME_OVER || state == STAGE_SELECT) ? availableStages[selectedStageIndex].topColor : new Color(255, 80, 0);
-        Color bottom = (state == FIGHT || state == GAME_OVER || state == STAGE_SELECT) ? availableStages[selectedStageIndex].bottomColor : new Color(255, 200, 0);
+        Color top = (state >= FIGHT || state == STAGE_SELECT) ? availableStages[selectedStageIndex].topColor : new Color(255, 80, 0);
+        Color bottom = (state >= FIGHT || state == STAGE_SELECT) ? availableStages[selectedStageIndex].bottomColor : new Color(255, 200, 0);
 
         GradientPaint gp = new GradientPaint(0, 0, top, 0, HEIGHT, bottom);
         g2.setPaint(gp);
         g2.fillRect(0, 0, WIDTH, HEIGHT);
 
         // Ground (Only draw ground in fight/game over states)
-        if (state == FIGHT || state == GAME_OVER) {
+        if (state >= FIGHT) {
             g.setColor(Color.GREEN.darker());
             g.fillRect(0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y);
         }
@@ -332,22 +391,25 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             fm = g.getFontMetrics();
             drawCenteredString(g, "Press A/D or Arrows to Choose. ENTER to Fight!", 450, fm);
 
-        } else if (state == FIGHT) {
-            // Draw Fighters
-            player1.draw(g);
-            player2.draw(g);
+        } else if (state == FIGHT || state == GAME_OVER) {
+            // Draw Fighters (only if they exist)
+            if (player1 != null) player1.draw(g);
+            if (player2 != null) player2.draw(g);
 
-            // Draw Health Bars
-            drawHealthBar(g, 50, 50, player1.getHealth(), availableColors[p1SelectionIndex]);
-            drawHealthBar(g, WIDTH - 150, 50, player2.getHealth(), availableColors[p2SelectionIndex]);
+            // Draw HUD elements only during FIGHT or GAME_OVER
+            if (state == FIGHT || state == GAME_OVER) {
+                // Draw Health Bars
+                drawHealthBar(g, 50, 50, player1.getHealth(), availableColors[p1SelectionIndex]);
+                drawHealthBar(g, WIDTH - 150, 50, player2.getHealth(), availableColors[p2SelectionIndex]);
 
-            // Draw Super Meters
-            drawSuperMeter(g, 50, 70, player1.getSuperMeter(), availableColors[p1SelectionIndex]);
-            drawSuperMeter(g, WIDTH - 150, 70, player2.getSuperMeter(), availableColors[p2SelectionIndex]);
+                // Draw Super Meters
+                drawSuperMeter(g, 50, 70, player1.getSuperMeter(), availableColors[p1SelectionIndex]);
+                drawSuperMeter(g, WIDTH - 150, 70, player2.getSuperMeter(), availableColors[p2SelectionIndex]);
 
-            // Draw Stocks
-            drawStocks(g, 50, 95, p1Stocks, availableColors[p1SelectionIndex]);
-            drawStocks(g, WIDTH - 150, 95, p2Stocks, availableColors[p2SelectionIndex]);
+                // Draw Stocks
+                drawStocks(g, 50, 95, p1Stocks, availableColors[p1SelectionIndex]);
+                drawStocks(g, WIDTH - 150, 95, p2Stocks, availableColors[p2SelectionIndex]);
+            }
 
             // Draw ROUND END Message (Fixes overlap with FIGHT! splash)
             if (roundEndTimer > 0) {
@@ -362,14 +424,15 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 drawCenteredString(g, "FIGHT!", 200, fm);
             }
 
-        } else if (state == GAME_OVER) {
-            g.setFont(new Font("Arial", Font.BOLD, 48));
-            fm = g.getFontMetrics();
-            drawCenteredString(g, winnerText, 200, fm);
-            g.setFont(new Font("Arial", Font.PLAIN, 24));
-            fm = g.getFontMetrics();
-            drawCenteredString(g, "Press R to Restart", 300, fm);
-            drawCenteredString(g, "Press ESC to Quit", 340, fm);
+            if (state == GAME_OVER) {
+                g.setFont(new Font("Arial", Font.BOLD, 48));
+                fm = g.getFontMetrics();
+                drawCenteredString(g, winnerText, 200, fm);
+                g.setFont(new Font("Arial", Font.PLAIN, 24));
+                fm = g.getFontMetrics();
+                drawCenteredString(g, "Press R to Restart", 300, fm);
+                drawCenteredString(g, "Press ESC to Quit", 340, fm);
+            }
         }
     }
 
@@ -382,11 +445,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
         g.setFont(new Font("Arial", Font.BOLD, 12));
         g.setColor(Color.WHITE);
-        // Position the text to the left of the stocks
         g.drawString("STOCKS:", x, y - 5);
 
         for (int i = 0; i < INITIAL_STOCKS; i++) {
-            // Stocks start drawing to the right of the "STOCKS:" text, offset by 50
             int stockX = x + 50 + i * (STOCK_SIZE + GAP);
 
             if (i < stocks) {
@@ -405,19 +466,30 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         g.drawString(label, x, y - 40);
 
         for (int i = 0; i < availableColors.length; i++) {
-            g.setColor(availableColors[i]);
             int boxX = x + i * 60;
-            g.fillOval(boxX, y, 50, 50);
 
+            // 1. Draw the actual Sprite
+            if (idleSprite != null) {
+                // Use the loaded image and draw it at the correct size
+                g.drawImage(idleSprite, boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, null);
+            } else {
+                // Fallback: Draw the old colored circle if sprites failed to load
+                g.setColor(availableColors[i]);
+                g.fillOval(boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE);
+            }
+
+            // 2. Draw Selection Outline
             if (i == selectionIndex) {
                 g.setColor(Color.WHITE);
                 Graphics2D g2 = (Graphics2D) g;
                 Stroke oldStroke = g2.getStroke();
                 g2.setStroke(new BasicStroke(3));
-                g2.drawRect(boxX - 5, y - 5, 60, 60);
+                // Draw a box around the selected color/sprite
+                g2.drawRect(boxX - 5, y - 5, Fighter.SPRITE_SIZE + 10, Fighter.SPRITE_SIZE + 10);
                 g2.setStroke(oldStroke);
             }
 
+            // 3. Draw X over the opponent's currently selected color (to prevent duplicate selection view)
             if (i == (label.contains("PLAYER 1") ? p2SelectionIndex : p1SelectionIndex) && i != selectionIndex) {
                 g.setColor(Color.BLACK);
                 g.drawString("X", boxX + 15, y + 35);
@@ -481,38 +553,31 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
                 p2SelectionIndex = (p2SelectionIndex + 1) % availableColors.length;
             } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                // Transition to stage select
                 state = STAGE_SELECT;
-            } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                System.exit(0);
             }
         } else if (state == STAGE_SELECT) {
-            int maxStages = availableStages.length;
             if (e.getKeyCode() == KeyEvent.VK_A || e.getKeyCode() == KeyEvent.VK_LEFT) {
-                selectedStageIndex = (selectedStageIndex - 1 + maxStages) % maxStages;
+                selectedStageIndex = (selectedStageIndex - 1 + availableStages.length) % availableStages.length;
             } else if (e.getKeyCode() == KeyEvent.VK_D || e.getKeyCode() == KeyEvent.VK_RIGHT) {
-                selectedStageIndex = (selectedStageIndex + 1) % maxStages;
+                selectedStageIndex = (selectedStageIndex + 1) % availableStages.length;
             } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                // Finalize selection and start the fight
                 initializeFighters();
                 state = FIGHT;
                 showFightText = true;
                 fightTimer = FIGHT_SPLASH_DURATION;
-            } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                System.exit(0);
             }
         } else if (state == FIGHT) {
-            if (e.getKeyCode() == player1.attackKey) player1.attack();
-            if (e.getKeyCode() == player2.attackKey) player2.attack();
-
-            if (e.getKeyCode() == player1.superAttackKey) player1.superAttack();
-            if (e.getKeyCode() == player2.superAttackKey) player2.superAttack();
-
-            if (e.getKeyCode() == player1.dashFwdKey) player1.dashForward();
-            if (e.getKeyCode() == player1.dashBackKey) player1.dashBack();
-            if (e.getKeyCode() == player2.dashFwdKey) player2.dashForward();
-            if (e.getKeyCode() == player2.dashBackKey) player2.dashBack();
-
+            // Only allow input if the round pause timer is NOT active
+            if (roundEndTimer == 0) {
+                if (e.getKeyCode() == player1.attackKey) player1.attack();
+                if (e.getKeyCode() == player2.attackKey) player2.attack();
+                if (e.getKeyCode() == player1.superAttackKey) player1.superAttack();
+                if (e.getKeyCode() == player2.superAttackKey) player2.superAttack();
+                if (e.getKeyCode() == player1.dashFwdKey) player1.dashForward();
+                if (e.getKeyCode() == player2.dashFwdKey) player2.dashForward();
+                if (e.getKeyCode() == player1.dashBackKey) player1.dashBack();
+                if (e.getKeyCode() == player2.dashBackKey) player2.dashBack();
+            }
         } else if (state == GAME_OVER) {
             if (e.getKeyCode() == KeyEvent.VK_R) {
                 resetGame();
