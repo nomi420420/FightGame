@@ -19,9 +19,9 @@ public class Fighter {
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
 
-    // Attack Hitbox Constants
-    private static final int ATTACK_HITBOX_WIDTH = 15; // Half size of sprite
-    private static final int ATTACK_HITBOX_HEIGHT = 10;
+    // Attack Hitbox Constants (ENLARGED for better gameplay feel)
+    private static final int ATTACK_HITBOX_WIDTH = 35; // Increased horizontal reach
+    private static final int ATTACK_HITBOX_HEIGHT = 22; // Slightly increased vertical size
     private static final int STAND_ATTACK_OFFSET_Y = 5;  // Hits mid-level (y=5)
     private static final int CROUCH_ATTACK_OFFSET_Y = 1;   // Hits low (y=1)
 
@@ -48,6 +48,7 @@ public class Fighter {
     // --- ANIMATION CONSTANTS ---
     public static final int RUN_FRAME_COUNT = 4;
     private static final int RUN_ANIMATION_SPEED = 5;
+    public static final int ATTACK_FRAME_COUNT = 8; // Used for slicing 8 frames
 
     // --- Private Fields (Encapsulation) ---
     private int x, y;
@@ -58,10 +59,11 @@ public class Fighter {
     private final Color color;
     private BufferedImage idleSprite;
     private BufferedImage[] runSprites;
+    private BufferedImage[] attackSprites; // New array for attack animation
 
     private int velY = 0;
     private float velX = 0;
-    public boolean onGround = true;
+    private boolean onGround = true;
     private int health = 100;
     private float superMeter = 0;
 
@@ -69,7 +71,7 @@ public class Fighter {
     private boolean hasHit = false;
 
     private boolean isCrouching = false;
-    public boolean isBlocking = false;
+    private boolean isBlocking = false;
     private int blockCooldown = 0;
     private boolean isBlockOnCooldown = false;
 
@@ -85,21 +87,21 @@ public class Fighter {
     private int dashCooldown = 0;
 
     // Attack and Animation
-    public int attackCooldown = 0;
+    private int attackCooldown = 0;
     private int animationTimer = 0;
     private int frameIndex = 0;
     private boolean isRunning = false;
 
     // --- Public Key Fields ---
     public final int leftKey, rightKey, jumpKey, attackKey, superAttackKey, crouchKey, dashFwdKey, dashBackKey;
-    private boolean blocking;
 
-    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites) {
+    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites, BufferedImage[] attackSprites) {
         this.x = x;
         this.y = y;
         this.color = color;
         this.idleSprite = idleSprite;
         this.runSprites = runSprites;
+        this.attackSprites = attackSprites; // Initialize attack sprites
         this.leftKey = left;
         this.rightKey = right;
         this.jumpKey = jump;
@@ -201,20 +203,20 @@ public class Fighter {
             }
         }
 
-            // 4d. User Movement and Running State Check
-            isRunning = false;
-            if (!isDashing && velX == 0) {
-                if (!isCrouching) {
-                    if (keys[leftKey]) {
-                        x -= MOVEMENT_SPEED;
-                        isRunning = true;
-                    }
-                    if (keys[rightKey]) {
-                        x += MOVEMENT_SPEED;
-                        isRunning = true;
-                    }
+        // 4d. User Movement and Running State Check
+        isRunning = false;
+        if (!isDashing && velX == 0) {
+            if (!isCrouching) {
+                if (keys[leftKey]) {
+                    x -= MOVEMENT_SPEED;
+                    isRunning = true;
+                }
+                if (keys[rightKey]) {
+                    x += MOVEMENT_SPEED;
+                    isRunning = true;
                 }
             }
+        }
 
         // --- 5. PHYSICS & TIMERS ---
 
@@ -268,10 +270,11 @@ public class Fighter {
     public float getSuperMeter() { return superMeter; }
     public boolean isInvulnerable() { return invulnerabilityTimer > 0; }
     public boolean isKnockedDown() { return isKnockedDown || knockdownTimer > 0; }
+    public boolean onGround() { return onGround; }
+    public boolean isBlocking() { return isBlocking; }
 
     /** Helper for AI to know if the fighter can take action (move, attack, dash). */
     public boolean canAct() {
-        // AI can act if not stunned or knocked down (allows attacking instantly after dash/on ground)
         return stunTimer == 0 && knockdownTimer == 0;
     }
 
@@ -401,7 +404,6 @@ public class Fighter {
 
         if (isBlocking && isFacingAttack) {
             blockCooldown = MAX_BLOCK_COOLDOWN;
-            isBlockOnCooldown = true;
             this.isBlocking = false;
             return;
         }
@@ -451,7 +453,17 @@ public class Fighter {
         if (runSprites != null && isRunning && onGround) {
             currentSprite = runSprites[frameIndex];
         }
-        // NOTE: Add logic here later for jumping, attacking, etc.
+        // --- ATTACK ANIMATION ---
+        else if (attackCooldown > 0 && attackSprites != null) {
+            // Calculate frame based on current cooldown (runs backward from ATTACK_DURATION)
+            int attackFrameIndex = (ATTACK_DURATION - attackCooldown) * attackSprites.length / ATTACK_DURATION;
+            // Clamp frame index to prevent array bounds error
+            if (attackFrameIndex >= attackSprites.length) {
+                attackFrameIndex = attackSprites.length - 1;
+            }
+            currentSprite = attackSprites[attackFrameIndex];
+        }
+        // ------------------------
 
         // 2. Invulnerability Flash Check
         boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
@@ -495,17 +507,5 @@ public class Fighter {
                 g.fillRect(ar.x, ar.y, ar.width, ar.height);
             }
         }
-    }
-
-    public boolean isBlocking() {
-        return blocking;
-    }
-
-    public void setBlocking(boolean blocking) {
-        this.blocking = blocking;
-    }
-
-    public boolean onGround() {
-        return onGround;  // Return the actual field value
     }
 }

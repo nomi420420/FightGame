@@ -2,18 +2,18 @@ import java.lang.Math;
 import java.awt.event.KeyEvent;
 
 /**
- * Static utility class containing the simplified logic for the Player 2 (AI) opponent.
- * This version focuses on core actions (Attack, Block, Move) for reliability.
+ * Static utility class containing the logic for the Player 2 (AI) opponent.
+ * This version uses a reliable, immediate attack input when in range.
  */
 public class AIOpponent {
 
     // AI Constants
+    private static final int AI_MIN_REACT_TIME = 1; // Minimum delay is 1 frame (instant)
+    private static final int AI_MAX_REACT_TIME = 3; // Maximum delay is 3 frames (very fast)
     private static final int AI_ATTACK_RANGE = 50;
     private static final int AI_BLOCK_RANGE = 80;
-    private static final int AI_DECISION_COOLDOWN = 8;  // Frames between movement decisions
 
-    private static int decisionTimer = 0;
-    private static int lastDecision = 0;  // 0 = none, 1 = move toward, 2 = move away, 3 = jump
+    private static int aiReactTimer = 0;
 
     /**
      * Executes the AI's decision-making process for Player 2.
@@ -27,85 +27,67 @@ public class AIOpponent {
         if (!player2.canAct()) {
             // Stop ALL keys
             keys[player2.leftKey] = keys[player2.rightKey] = keys[player2.jumpKey] = keys[player2.crouchKey] = false;
-            keys[player2.attackKey] = false;
-            keys[player2.superAttackKey] = false;
-            decisionTimer = 0;
-            lastDecision = 0;
             return;
         }
 
-        // Reset all active keys before making a new decision
+        // Reset all active movement/defense keys before making a new decision
         keys[player2.leftKey] = keys[player2.rightKey] = keys[player2.jumpKey] = keys[player2.crouchKey] = false;
-        keys[player2.attackKey] = false;
-        keys[player2.superAttackKey] = false;
+        // Do NOT reset attack keys here, as they are handled by direct function calls below.
 
         int distance = Math.abs(player1.getX() - player2.getX());
         int directionToPlayerKey = (player1.getX() < player2.getX()) ? player2.leftKey : player2.rightKey;
-        int awayKey = (directionToPlayerKey == player2.leftKey) ? player2.rightKey : player2.leftKey;
 
         // --- IMMEDIATE ATTACK CHECK (Highest Priority) ---
+        // If we are close and ready to attack, call the attack function directly to bypass key timing issues.
         if (distance < AI_ATTACK_RANGE && player2.isAttackReady()) {
-            if (player2.getSuperMeter() >= Fighter.SUPER_ATTACK_COST && Math.random() < 0.3) {
-                keys[player2.superAttackKey] = true;
+            if (player2.getSuperMeter() >= Fighter.SUPER_ATTACK_COST) {
+                player2.superAttack(); // DIRECT FUNCTION CALL
             } else {
-                keys[player2.attackKey] = true;
+                player2.attack(); // DIRECT FUNCTION CALL
             }
-            decisionTimer = 0;
-            lastDecision = 0;
             return; // EXIT: Attack committed
         }
+        // ----------------------------------------------------
 
-        // --- DEFENSE LOGIC (Reduced block chance) ---
-        if (player1.isAttackActive() && distance < AI_BLOCK_RANGE) {
-            boolean isFacingAttacker = player1.getDirection() != player2.getDirection();
 
-            if (isFacingAttacker && Math.random() < 0.60) {  // Reduced from 90% to 60%
-                keys[player2.crouchKey] = true;
-                return;
-            }
-        }
-
-        // --- MOVEMENT LOGIC (With decision cooldown for smoothness) ---
-        
-        // Maintain last decision until timer expires
-        if (decisionTimer > 0) {
-            decisionTimer--;
-            
-            // Execute the last decision
-            if (lastDecision == 1) {
-                keys[directionToPlayerKey] = true;
-            } else if (lastDecision == 2) {
-                keys[awayKey] = true;
-            } else if (lastDecision == 3 && player2.onGround()) {
-                keys[player2.jumpKey] = true;
-            }
+        // --- React Timer (GATES MOVEMENT AND DEFENSE) ---
+        if (aiReactTimer > 0) {
+            aiReactTimer--;
             return;
         }
 
-        // Make a new decision
-        if (distance > AI_ATTACK_RANGE * 2) {
-            // Far: walk toward
-            lastDecision = 1;
-            decisionTimer = AI_DECISION_COOLDOWN;
-            keys[directionToPlayerKey] = true;
-            
-        } else if (distance > AI_ATTACK_RANGE) {
-            // Medium range: sometimes jump, mostly walk toward
-            if (Math.random() < 0.10 && player2.onGround()) {
-                lastDecision = 3;
-                decisionTimer = AI_DECISION_COOLDOWN;
-                keys[player2.jumpKey] = true;
-            } else {
-                lastDecision = 1;
-                decisionTimer = AI_DECISION_COOLDOWN;
-                keys[directionToPlayerKey] = true;
+        // Set a new random reaction delay
+        aiReactTimer = (int) (Math.random() * (AI_MAX_REACT_TIME - AI_MIN_REACT_TIME)) + AI_MIN_REACT_TIME;
+
+
+        // --- 1. DEFENSE LOGIC (High Priority) ---
+        if (player1.isAttackActive() && distance < AI_BLOCK_RANGE) {
+            boolean isFacingAttacker = player1.getDirection() != player2.getDirection();
+
+            if (isFacingAttacker) {
+                if (Math.random() < 0.90) { // 90% chance to block
+                    keys[player2.crouchKey] = true;
+                    return;
+                }
             }
-            
-        } else {
-            // Too close: back away
-            lastDecision = 2;
-            decisionTimer = AI_DECISION_COOLDOWN / 2;  // Shorter cooldown for backing away
-            keys[awayKey] = true;
+        }
+
+        // --- 2. MOVEMENT LOGIC (Move toward player) ---
+        else {
+            if (distance > AI_ATTACK_RANGE * 2) {
+                // If far, walk toward
+                keys[directionToPlayerKey] = true;
+            } else if (distance > AI_ATTACK_RANGE) {
+                // If just outside range, hop or walk slightly toward
+                if (Math.random() < 0.2 && player2.onGround()) {
+                    keys[player2.jumpKey] = true;
+                } else {
+                    keys[directionToPlayerKey] = true;
+                }
+            } else {
+                // If too close (overlapping): try to jump away
+                keys[directionToPlayerKey == player2.leftKey ? player2.rightKey : player2.leftKey] = true; // Walk away
+            }
         }
     }
 }
