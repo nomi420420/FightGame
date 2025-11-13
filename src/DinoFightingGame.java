@@ -1,6 +1,6 @@
 import javax.swing.*;
 
-public class FightingGame {
+public class DinoFightingGame {
     public static void main(String[] args) {
         JFrame frame = new JFrame("Dino Fighting Game");
         GamePanel panel = new GamePanel();

@@ -1,4 +1,4 @@
-# Java Fighting Game
+# Dino Fighting Game
 
 A fast-paced, two-player fighting game built using Java and Swing. Features robust, competitive mechanics designed for strategic play and precise timing, with both local multiplayer and single-player AI modes.
 
@@ -95,7 +95,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 1. Clone the repository
 2. Ensure you have Java 21 or higher installed
 3. Verify the `assets/` folder contains all sprite sheets (`fighter_sheet_0.png` through `fighter_sheet_3.png`) and sound files
-4. Compile and run the `FightingGame` class
+4. Compile and run the `DinoFightingGame` class
 5. Select your game mode with 1 (Local) or 2 (AI)
 6. Choose your fighters and stage
 7. Press ENTER to start the match
