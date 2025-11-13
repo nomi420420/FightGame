@@ -8,12 +8,12 @@ import java.awt.event.KeyEvent;
 public class AIOpponent {
 
     // AI Constants
-    private static final int AI_MIN_REACT_TIME = 8;
-    private static final int AI_MAX_REACT_TIME = 20;
     private static final int AI_ATTACK_RANGE = 50;
     private static final int AI_BLOCK_RANGE = 80;
+    private static final int AI_DECISION_COOLDOWN = 8;  // Frames between movement decisions
 
-    private static int aiReactTimer = 0;
+    private static int decisionTimer = 0;
+    private static int lastDecision = 0;  // 0 = none, 1 = move toward, 2 = move away, 3 = jump
 
     /**
      * Executes the AI's decision-making process for Player 2.
@@ -27,6 +27,10 @@ public class AIOpponent {
         if (!player2.canAct()) {
             // Stop ALL keys
             keys[player2.leftKey] = keys[player2.rightKey] = keys[player2.jumpKey] = keys[player2.crouchKey] = false;
+            keys[player2.attackKey] = false;
+            keys[player2.superAttackKey] = false;
+            decisionTimer = 0;
+            lastDecision = 0;
             return;
         }
 
@@ -37,59 +41,71 @@ public class AIOpponent {
 
         int distance = Math.abs(player1.getX() - player2.getX());
         int directionToPlayerKey = (player1.getX() < player2.getX()) ? player2.leftKey : player2.rightKey;
+        int awayKey = (directionToPlayerKey == player2.leftKey) ? player2.rightKey : player2.leftKey;
 
         // --- IMMEDIATE ATTACK CHECK (Highest Priority) ---
-        // If we are close and ready to attack, bypass the react timer and attack immediately.
         if (distance < AI_ATTACK_RANGE && player2.isAttackReady()) {
-            if (player2.getSuperMeter() >= Fighter.SUPER_ATTACK_COST) {
+            if (player2.getSuperMeter() >= Fighter.SUPER_ATTACK_COST && Math.random() < 0.3) {
                 keys[player2.superAttackKey] = true;
             } else {
                 keys[player2.attackKey] = true;
             }
+            decisionTimer = 0;
+            lastDecision = 0;
             return; // EXIT: Attack committed
         }
-        // ----------------------------------------------------
 
-
-        // --- React Timer ---
-        if (aiReactTimer > 0) {
-            aiReactTimer--;
-            return;
-        }
-
-        // Set a new random reaction delay
-        aiReactTimer = (int) (Math.random() * (AI_MAX_REACT_TIME - AI_MIN_REACT_TIME)) + AI_MIN_REACT_TIME;
-
-
-        // --- 1. DEFENSE LOGIC (High Priority) ---
+        // --- DEFENSE LOGIC (Reduced block chance) ---
         if (player1.isAttackActive() && distance < AI_BLOCK_RANGE) {
             boolean isFacingAttacker = player1.getDirection() != player2.getDirection();
 
-            if (isFacingAttacker) {
-                if (Math.random() < 0.90) { // 90% chance to block
-                    keys[player2.crouchKey] = true;
-                    return;
-                }
+            if (isFacingAttacker && Math.random() < 0.60) {  // Reduced from 90% to 60%
+                keys[player2.crouchKey] = true;
+                return;
             }
         }
 
-        // --- 2. MOVEMENT LOGIC (Move toward player) ---
-        // Only run if not attacking, and outside the attack range
-        else {
-            if (distance > AI_ATTACK_RANGE * 2) {
-                // If far, walk toward
+        // --- MOVEMENT LOGIC (With decision cooldown for smoothness) ---
+        
+        // Maintain last decision until timer expires
+        if (decisionTimer > 0) {
+            decisionTimer--;
+            
+            // Execute the last decision
+            if (lastDecision == 1) {
                 keys[directionToPlayerKey] = true;
-            } else if (distance > AI_ATTACK_RANGE) {
-                // If just outside range, hop or walk slightly toward
-                if (Math.random() < 0.2 && player2.onGround()) {
-                    keys[player2.jumpKey] = true;
-                } else {
-                    keys[directionToPlayerKey] = true;
-                }
-            } else {
-                // If too close (overlapping): try to jump away
-                keys[directionToPlayerKey == player2.leftKey ? player2.rightKey : player2.leftKey] = true; // Walk away
+            } else if (lastDecision == 2) {
+                keys[awayKey] = true;
+            } else if (lastDecision == 3 && player2.onGround()) {
+                keys[player2.jumpKey] = true;
             }
+            return;
+        }
+
+        // Make a new decision
+        if (distance > AI_ATTACK_RANGE * 2) {
+            // Far: walk toward
+            lastDecision = 1;
+            decisionTimer = AI_DECISION_COOLDOWN;
+            keys[directionToPlayerKey] = true;
+            
+        } else if (distance > AI_ATTACK_RANGE) {
+            // Medium range: sometimes jump, mostly walk toward
+            if (Math.random() < 0.10 && player2.onGround()) {
+                lastDecision = 3;
+                decisionTimer = AI_DECISION_COOLDOWN;
+                keys[player2.jumpKey] = true;
+            } else {
+                lastDecision = 1;
+                decisionTimer = AI_DECISION_COOLDOWN;
+                keys[directionToPlayerKey] = true;
+            }
+            
+        } else {
+            // Too close: back away
+            lastDecision = 2;
+            decisionTimer = AI_DECISION_COOLDOWN / 2;  // Shorter cooldown for backing away
+            keys[awayKey] = true;
         }
     }
 }

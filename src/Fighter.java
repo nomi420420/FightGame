@@ -201,20 +201,20 @@ public class Fighter {
             }
         }
 
-        // 4d. User Movement and Running State Check
-        isRunning = false;
-        if (!isDashing && velX == 0) {
-            if (!isCrouching) {
-                if (keys[leftKey]) {
-                    x -= MOVEMENT_SPEED;
-                    isRunning = true;
-                }
-                if (keys[rightKey]) {
-                    x += MOVEMENT_SPEED;
-                    isRunning = true;
+            // 4d. User Movement and Running State Check
+            isRunning = false;
+            if (!isDashing && velX == 0) {
+                if (!isCrouching) {
+                    if (keys[leftKey]) {
+                        x -= MOVEMENT_SPEED;
+                        isRunning = true;
+                    }
+                    if (keys[rightKey]) {
+                        x += MOVEMENT_SPEED;
+                        isRunning = true;
+                    }
                 }
             }
-        }
 
         // --- 5. PHYSICS & TIMERS ---
 
