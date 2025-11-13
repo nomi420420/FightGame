@@ -229,6 +229,16 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             // --- AI LOGIC FOR PLAYER 2 ---
             if (state == AI_FIGHT) {
                 AIOpponent.runAILogic(player1, player2, keys);
+                
+                // Trigger AI attacks if keys are set
+                if (keys[player2.attackKey]) {
+                    player2.attack();
+                    keys[player2.attackKey] = false;
+                }
+                if (keys[player2.superAttackKey]) {
+                    player2.superAttack();
+                    keys[player2.superAttackKey] = false;
+                }
             }
             // -----------------------------
 

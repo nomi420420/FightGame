@@ -506,6 +506,6 @@ public class Fighter {
     }
 
     public boolean onGround() {
-        return false;
+        return onGround;  // Return the actual field value
     }
 }
