@@ -9,31 +9,30 @@ public class Fighter {
     private static final int GRAVITY_ACCELERATION = 1;
     private static final int GROUND_Y = 400;
 
-    // Physical Size (Set to 24px wide/high to match the user's spritesheet)
-    public static final int SPRITE_SIZE = 24;
-
     // Attack and Animation
+    public static final int SPRITE_SIZE = 24; // Physical size of the fighter (pixels)
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
     private static final int STAND_HEIGHT = SPRITE_SIZE;
-    private static final int CROUCH_HEIGHT = (int)(SPRITE_SIZE * 0.6); // 60% of standing height
+    private static final int CROUCH_HEIGHT = 16;
 
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
 
     // Attack Hitbox Constants
-    private static final int ATTACK_HITBOX_WIDTH = 30;
-    private static final int ATTACK_HITBOX_HEIGHT = 20;
-    private static final int STAND_ATTACK_OFFSET_Y = 5; // Mid-level hit (Adjusted for 24px sprite)
-    private static final int CROUCH_ATTACK_OFFSET_Y = 0;  // Low hit (Starts at sprite top)
+    private static final int ATTACK_HITBOX_WIDTH = 15; // Half size of sprite
+    private static final int ATTACK_HITBOX_HEIGHT = 10;
+    private static final int STAND_ATTACK_OFFSET_Y = 5;  // Hits mid-level (y=5)
+    private static final int CROUCH_ATTACK_OFFSET_Y = 1;   // Hits low (y=1)
 
     // Dashing
     private static final int DASH_DISTANCE = 100; // Total distance to travel
-    private static final int DASH_FRAMES = 10;    // Frames the dash lasts (10 FPS speed)
-    private static final int DASH_COOLDOWN = 30;  // Cooldown after dash (0.5s)
+    private static final int DASH_FRAMES = 10;
+    private static final int DASH_COOLDOWN = 30;
 
     // --- KNOCKDOWN & STUN CONSTANTS ---
     private static final int REGULAR_STUN_DURATION = 8;
+    private static final int AIR_STUN_DURATION = 15; // Longer stun for air combos
     private static final int KNOCKBACK_STRENGTH_LIGHT = 6;
     private static final int KNOCKBACK_STRENGTH_HEAVY = 12;
     private static final int KNOCKDOWN_DURATION = 90;
@@ -62,7 +61,7 @@ public class Fighter {
 
     private int velY = 0;
     private float velX = 0;
-    private boolean onGround = true;
+    public boolean onGround = true;
     private int health = 100;
     private float superMeter = 0;
 
@@ -70,7 +69,7 @@ public class Fighter {
     private boolean hasHit = false;
 
     private boolean isCrouching = false;
-    private boolean isBlocking = false;
+    public boolean isBlocking = false;
     private int blockCooldown = 0;
     private boolean isBlockOnCooldown = false;
 
@@ -86,13 +85,14 @@ public class Fighter {
     private int dashCooldown = 0;
 
     // Attack and Animation
-    private int attackCooldown = 0;
+    public int attackCooldown = 0;
     private int animationTimer = 0;
     private int frameIndex = 0;
     private boolean isRunning = false;
 
     // --- Public Key Fields ---
     public final int leftKey, rightKey, jumpKey, attackKey, superAttackKey, crouchKey, dashFwdKey, dashBackKey;
+    private boolean blocking;
 
     public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites) {
         this.x = x;
@@ -119,7 +119,6 @@ public class Fighter {
             animationTimer = 0;
             frameIndex = (frameIndex + 1) % RUN_FRAME_COUNT;
         }
-        // ------------------------------------
 
         // --- 1. HANDLE KNOCKDOWN STATE ---
         if (knockdownTimer > 0) {
@@ -156,9 +155,6 @@ public class Fighter {
             // Check if knockback has dissipated enough to restore control
             if (Math.abs(velX) < 1.0) {
                 velX = 0;
-            }
-            if (stunTimer == 0 && velX == 0) {
-                // Stun ends only when timer and movement stop
             }
             return; // EXIT: NO user input if in stun
         }
@@ -273,6 +269,17 @@ public class Fighter {
     public boolean isInvulnerable() { return invulnerabilityTimer > 0; }
     public boolean isKnockedDown() { return isKnockedDown || knockdownTimer > 0; }
 
+    /** Helper for AI to know if the fighter can take action (move, attack, dash). */
+    public boolean canAct() {
+        // AI can act if not stunned or knocked down (allows attacking instantly after dash/on ground)
+        return stunTimer == 0 && knockdownTimer == 0;
+    }
+
+    /** Helper for AI to check if attack cooldown is clear. */
+    public boolean isAttackReady() {
+        return attackCooldown == 0;
+    }
+
     /** Resets health and all status effects for a new round. */
     public void resetHealth() {
         this.health = 100;
@@ -316,11 +323,10 @@ public class Fighter {
     // --- Dash Methods ---
 
     private boolean startDash(int directionMultiplier) {
-        if (dashCooldown == 0 && stunTimer == 0 && onGround) {
+        if (stunTimer == 0 && onGround) {
             isDashing = true;
             dashTimer = DASH_FRAMES;
             dashCooldown = DASH_COOLDOWN;
-            // Calculate fixed velocity for the dash
             velX = (float) (directionMultiplier * DASH_DISTANCE) / DASH_FRAMES;
             return true;
         }
@@ -328,11 +334,13 @@ public class Fighter {
     }
 
     public boolean dashForward() {
-        return startDash(this.direction);
+        if (dashCooldown == 0) return startDash(this.direction);
+        return false;
     }
 
     public boolean dashBack() {
-        return startDash(-this.direction);
+        if (dashCooldown == 0) return startDash(-this.direction);
+        return false;
     }
 
     // --- Attack & Damage Logic ---
@@ -409,7 +417,7 @@ public class Fighter {
         int knockbackSign = attackerDirection * -1; // Push away from attacker
 
         if (isSuper) {
-            // Apply Knockdown State
+            // SUPER ATTACK: Always results in knockdown/heavy stun
             knockdownTimer = KNOCKDOWN_DURATION;
             velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_HEAVY);
 
@@ -418,9 +426,17 @@ public class Fighter {
             }
 
         } else {
-            // Apply Regular Stun State
-            stunTimer = REGULAR_STUN_DURATION;
-            velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_LIGHT);
+            // REGULAR ATTACK: Air hit vs Ground hit determines stun type
+
+            if (!onGround) {
+                // AIR COMBO STUN: Longer stun, lighter knockback to keep opponent floating
+                stunTimer = AIR_STUN_DURATION;
+                velX = (float) (knockbackSign * (KNOCKBACK_STRENGTH_LIGHT / 2.0));
+            } else {
+                // GROUND STUN: Standard stun
+                stunTimer = REGULAR_STUN_DURATION;
+                velX = (float) (knockbackSign * KNOCKBACK_STRENGTH_LIGHT);
+            }
         }
     }
 
@@ -431,11 +447,11 @@ public class Fighter {
         // 1. Determine which sprite frame to draw
         BufferedImage currentSprite = idleSprite;
 
-        // Prioritize Run Animation if applicable
-        if (runSprites != null && runSprites[0] != null && isRunning && onGround) {
+        // Prioritize Run Animation if running on the ground
+        if (runSprites != null && isRunning && onGround) {
             currentSprite = runSprites[frameIndex];
         }
-        // NOTE: Add logic here later for jumping, attacking, crouching, etc.
+        // NOTE: Add logic here later for jumping, attacking, etc.
 
         // 2. Invulnerability Flash Check
         boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
@@ -454,9 +470,9 @@ public class Fighter {
                 // Draw the sprite, using the fighter's width/height constraints
                 g2.drawImage(currentSprite, drawX, y, drawWidth, height, null);
             } else {
-                // FALLBACK: Draw colored circle if sprite not found
+                // FALLBACK: Draw color block if sprite not found
                 g.setColor(color);
-                g.fillOval(x, y, width, height);
+                g.fillRect(x, y, width, height);
             }
         }
 
@@ -479,5 +495,17 @@ public class Fighter {
                 g.fillRect(ar.x, ar.y, ar.width, ar.height);
             }
         }
+    }
+
+    public boolean isBlocking() {
+        return blocking;
+    }
+
+    public void setBlocking(boolean blocking) {
+        this.blocking = blocking;
+    }
+
+    public boolean onGround() {
+        return false;
     }
 }

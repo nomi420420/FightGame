@@ -17,18 +17,20 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int GAME_FPS = 60;
     private static final int GROUND_Y = 400;
     private static final int INITIAL_STOCKS = 3;
-    private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause after stock loss
+    private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause
 
     // Game States
-    private final int START_MENU = 0, CHARACTER_SELECT = 1, STAGE_SELECT = 2, FIGHT = 3, GAME_OVER = 4;
+    private final int START_MENU = 0, MODE_SELECT = 1, CHARACTER_SELECT = 2, FIGHT = 4, AI_FIGHT = 5, GAME_OVER = 6;
 
-    // Fighter Constants
-    private static final int P1_START_X = 200;
-    private static final int P2_START_X = 550;
+    // Combat
     private static final int REGULAR_DAMAGE = 10;
     private static final int SUPER_DAMAGE = 50;
     private static final int FIGHT_SPLASH_DURATION = 60;
     private static final int PUSH_BACK_AMOUNT = 2;
+
+    // Fighter Start Positions
+    private static final int P1_START_X = 200;
+    private static final int P2_START_X = 550;
 
     // --- Stage Structure ---
     private static class Stage {
@@ -43,28 +45,21 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         }
     }
 
-    // --- Asset Structure ---
+    // --- Fighter Asset Structure ---
     private static class FighterAssets {
         BufferedImage idleSprite;
         BufferedImage[] runSprites;
-
-        public FighterAssets(BufferedImage idle, BufferedImage[] run) {
-            this.idleSprite = idle;
-            this.runSprites = run;
-        }
     }
 
     // --- 2. FIELDS ---
     private Timer timer;
     private int state = START_MENU;
 
-    // ASSETS
-    private ArrayList<FighterAssets> fighterAssetSets;
+    // ASSET FIELDS
+    private final ArrayList<FighterAssets> fighterAssetSets = new ArrayList<>();
 
-    // CHARACTER SELECT FIELDS
-    // Reduced to 4 available colors
+    // CHARACTER SELECT FIELDS (4 CHOICES)
     private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW};
-    private final int ASSET_SET_COUNT = 4; // Matches the 4 colors/assets
     private int p1SelectionIndex = 0;
     private int p2SelectionIndex = 1;
 
@@ -92,6 +87,10 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     private String winnerText = "";
 
+    private int gameStateMode = FIGHT; // Stores whether the fight is local or AI
+
+    private int menuTransitionTimer = 0; // Input Gate Timer (5 frames)
+
     // --- 3. CONSTRUCTOR & INITIALIZATION ---
 
     public GamePanel() {
@@ -99,119 +98,98 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         setFocusable(true);
         addKeyListener(this);
 
-        loadImages();
+        loadImages(); // Load all sprite assets once
 
         timer = new Timer(1000 / GAME_FPS, this);
         timer.start();
     }
 
     private void loadImages() {
-        fighterAssetSets = new ArrayList<>();
-        final int FRAME_SIZE = Fighter.SPRITE_SIZE;
-        final int FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
-
-        // Load assets for the 4 unique fighter sheets (0, 1, 2, 3)
-        for (int i = 0; i < ASSET_SET_COUNT; i++) {
-            BufferedImage idle = null;
-            BufferedImage[] run = new BufferedImage[FRAME_COUNT];
-
+        for (int i = 0; i < 4; i++) {
+            FighterAssets assets = new FighterAssets();
             try {
-                // Filename depends on the asset set index
-                String filename = "assets/fighter_sheet_" + i + ".png";
-                BufferedImage baseSheet = ImageIO.read(new File(filename));
+                BufferedImage baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet_" + i + ".png"));
 
-                if (baseSheet == null) {
-                    throw new IOException("Failed to read image data for " + filename);
+                final int FRAME_SIZE = Fighter.SPRITE_SIZE;
+                final int RUN_FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
+
+                if (baseSpriteSheet.getHeight() < FRAME_SIZE) {
+                    throw new IOException("Sprite sheet height is too small for frame size: " + baseSpriteSheet.getHeight());
                 }
 
-                // Safety Checks
-                if (baseSheet.getHeight() < FRAME_SIZE) {
-                    throw new IOException("Sprite sheet height is too small for frame size.");
-                }
-                if (baseSheet.getWidth() < FRAME_SIZE * (FRAME_COUNT + 1)) {
-                    throw new IOException("Sprite sheet width is too small for 1 idle frame and " + FRAME_COUNT + " run frames.");
-                }
-
-                // 1. Slice Idle Sprite (Column 0, x=0)
-                idle = baseSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
-
-                // 2. Slice Running Sprites (Starting immediately after idle, Columns 1 to 4)
-                for (int j = 0; j < FRAME_COUNT; j++) {
+                // SLICING LOGIC
+                assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+                assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
+                for (int j = 0; j < RUN_FRAME_COUNT; j++) {
                     int xOffset = (j + 1) * FRAME_SIZE;
-                    run[j] = baseSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
+                    if (xOffset + FRAME_SIZE > baseSpriteSheet.getWidth()) {
+                        throw new IOException("Sprite sheet width is too small for " + RUN_FRAME_COUNT + " run frames.");
+                    }
+                    assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
                 }
 
-                fighterAssetSets.add(new FighterAssets(idle, run));
+                fighterAssetSets.add(assets);
 
             } catch (IOException e) {
-                System.err.println("Error loading asset set " + i + ": " + e.getMessage() + ". Using fallback.");
+                System.err.println("Error loading sprite sheet for index " + i + ": " + e.getMessage());
 
-                // --- FALLBACK FIX: Define Graphics2D explicitly for the fallback image ---
-                idle = new BufferedImage(FRAME_SIZE, FRAME_SIZE, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g2_fallback = idle.createGraphics();
-                g2_fallback.setColor(availableColors[i]);
-                g2_fallback.fillRect(0, 0, FRAME_SIZE, FRAME_SIZE);
+                // Fallback: Create a placeholder sprite if image loading fails
+                final int FALLBACK_SIZE = FRAMEBITS;
+                BufferedImage fallback = new BufferedImage(FALLBACK_SIZE, FALLBACK_SIZE, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2_fallback = fallback.createGraphics();
+                g2_fallback.setColor(Color.WHITE);
+                g2_fallback.fillRect(0, 0, FALLBACK_SIZE, FALLBACK_SIZE);
                 g2_fallback.dispose();
-                // --------------------------------------------------------------------------
 
-                for (int j = 0; j < FRAME_COUNT; j++) {
-                    run[j] = idle;
-                }
-                fighterAssetSets.add(new FighterAssets(idle, run));
+                assets.idleSprite = fallback;
+                assets.runSprites = new BufferedImage[]{fallback, fallback, fallback, fallback};
+                fighterAssetSets.add(assets);
             }
         }
-
-        // ** Removed the Slot 4 (Cyan) reuse logic, as availableColors is now 4 long **
     }
 
     private void initializeFighters() {
-        // Ensure players don't select the same color
         if (p1SelectionIndex == p2SelectionIndex) {
             p2SelectionIndex = (p2SelectionIndex + 1) % availableColors.length;
         }
 
-        // Determine which asset set to use for each player (0-3, matching colors 0-3)
-        int p1AssetIndex = p1SelectionIndex;
-        int p2AssetIndex = p2SelectionIndex;
-
-        FighterAssets p1Assets = fighterAssetSets.get(p1AssetIndex);
-        FighterAssets p2Assets = fighterAssetSets.get(p2AssetIndex);
-
-        // Initialize stocks
         p1Stocks = INITIAL_STOCKS;
         p2Stocks = INITIAL_STOCKS;
 
-        Color color1 = availableColors[p1SelectionIndex];
-        Color color2 = availableColors[p2SelectionIndex];
-
-        // Determine start Y based on the dynamic SPRITE_SIZE
-        int startY = GROUND_Y - Fighter.SPRITE_SIZE;
+        FighterAssets assets1 = fighterAssetSets.get(p1SelectionIndex);
+        FighterAssets assets2 = fighterAssetSets.get(p2SelectionIndex);
 
         // Player 1 (Keyset 1)
         player1 = new Fighter(
-                P1_START_X, startY, color1,
+                P1_START_X, GROUND_Y, availableColors[p1SelectionIndex],
                 KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W,
                 KeyEvent.VK_F, KeyEvent.VK_G,
                 KeyEvent.VK_S,
                 KeyEvent.VK_E, KeyEvent.VK_R,
-                p1Assets.idleSprite, p1Assets.runSprites
+                assets1.idleSprite, assets1.runSprites
         );
         // Player 2 (Keyset 2)
         player2 = new Fighter(
-                P2_START_X, startY, color2,
+                P2_START_X, GROUND_Y, availableColors[p2SelectionIndex],
                 KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP,
                 KeyEvent.VK_L, KeyEvent.VK_K,
                 KeyEvent.VK_DOWN,
                 KeyEvent.VK_I, KeyEvent.VK_O,
-                p2Assets.idleSprite, p2Assets.runSprites
+                assets2.idleSprite, assets2.runSprites
         );
+
+        // Clear P2 keys if in AI mode
+        if (gameStateMode == AI_FIGHT) {
+            keys[player2.leftKey] = keys[player2.rightKey] = keys[player2.jumpKey] = false;
+            keys[player2.attackKey] = keys[player2.superAttackKey] = keys[player2.crouchKey] = false;
+            keys[player2.dashFwdKey] = keys[player2.dashBackKey] = false;
+        }
     }
 
     private void resetGame() {
-        // Reset stocks and return to stage select
         p1Stocks = INITIAL_STOCKS;
         p2Stocks = INITIAL_STOCKS;
-        state = STAGE_SELECT;
+        state = MODE_SELECT;
         winnerText = "";
     }
 
@@ -219,30 +197,40 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (state == FIGHT) {
+        // --- Decrement Menu Input Gate Timer ---
+        if (menuTransitionTimer > 0) {
+            menuTransitionTimer--;
+        }
+        // ----------------------------------------
 
-            // --- PAUSE/ROUND RESET LOGIC (Delayed Reset Fix) ---
+        if (state == FIGHT || state == AI_FIGHT) {
+
+            // --- PAUSE/ROUND RESET LOGIC ---
             if (roundEndTimer > 0) {
                 roundEndTimer--;
                 if (roundEndTimer <= 0) {
-                    // Reset health and state immediately before starting next round
                     player1.resetHealth();
                     player2.resetHealth();
 
                     // Reset positions for start of round
                     player1.setX(P1_START_X);
-                    player1.setY(GROUND_Y - Fighter.SPRITE_SIZE);
+                    player1.setY(GROUND_Y - player1.getRect().height);
                     player2.setX(P2_START_X);
-                    player2.setY(GROUND_Y - Fighter.SPRITE_SIZE);
+                    player2.setY(GROUND_Y - player2.getRect().height);
 
                     roundEndMessage = "";
                     showFightText = true;
                     fightTimer = FIGHT_SPLASH_DURATION;
                 }
                 repaint();
-                return; // PAUSE: Skip all update/attack logic
+                return;
             }
-            // ----------------------------------------------------
+
+            // --- AI LOGIC FOR PLAYER 2 ---
+            if (state == AI_FIGHT) {
+                AIOpponent.runAILogic(player1, player2, keys);
+            }
+            // -----------------------------
 
             player1.update(keys);
             player2.update(keys);
@@ -269,7 +257,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player2.setX(player2.getX() - PUSH_BACK_AMOUNT);
                 }
             }
-            // ------------------------------------
 
             // --- ATTACK COLLISION LOGIC ---
 
@@ -282,6 +269,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player2.takeDamage(damage, player1.getDirection());
                     player1.registerHit(isSuper);
                     player1.gainMeter(isSuper ? Fighter.METER_GAIN_HIT * 2 : Fighter.METER_GAIN_HIT);
+                    SoundPlayer.playSound("assets/sounds/" + (player2.isBlocking() ? "block.wav" : (isSuper ? "hit_super.wav" : "hit_regular.wav")));
                 }
             }
 
@@ -294,6 +282,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player1.takeDamage(damage, player2.getDirection());
                     player2.registerHit(isSuper);
                     player2.gainMeter(isSuper ? Fighter.METER_GAIN_HIT * 2 : Fighter.METER_GAIN_HIT);
+                    SoundPlayer.playSound("assets/sounds/" + (player1.isBlocking() ? "block.wav" : (isSuper ? "hit_super.wav" : "hit_regular.wav")));
                 }
             }
 
@@ -301,11 +290,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             boolean stockLost = false;
             String finalWinner = null;
 
-            // Check P1 Health (P2 Wins Round)
             if (player1.getHealth() <= 0) {
                 p1Stocks--;
                 stockLost = true;
-
                 if (p1Stocks <= 0) {
                     finalWinner = "Player 2 Wins!";
                 } else {
@@ -313,11 +300,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 }
             }
 
-            // Check P2 Health (P1 Wins Round)
             if (player2.getHealth() <= 0) {
                 p2Stocks--;
                 stockLost = true;
-
                 if (p2Stocks <= 0) {
                     finalWinner = "Player 1 Wins!";
                 } else {
@@ -332,10 +317,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
 
             // 2. START NEW ROUND (If match is NOT over, but a stock was lost)
-            if (stockLost && state == FIGHT) {
+            if (stockLost && state != GAME_OVER) {
                 roundEndTimer = ROUND_END_PAUSE_DURATION;
             }
-
 
             if (showFightText) {
                 fightTimer--;
@@ -345,7 +329,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         repaint();
     }
 
-    // --- 5. DRAWING (paintComponent) ---
+    // --- DRAWING ---
 
     @Override
     public void paintComponent(Graphics g) {
@@ -353,8 +337,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         Graphics2D g2 = (Graphics2D) g;
 
         // --- BACKGROUND DRAWING ---
-        Color top = (state >= FIGHT || state == STAGE_SELECT) ? availableStages[selectedStageIndex].topColor : new Color(255, 80, 0);
-        Color bottom = (state >= FIGHT || state == STAGE_SELECT) ? availableStages[selectedStageIndex].bottomColor : new Color(255, 200, 0);
+        Color top = (state >= FIGHT) ? availableStages[selectedStageIndex].topColor : new Color(255, 80, 0);
+        Color bottom = (state >= FIGHT) ? availableStages[selectedStageIndex].bottomColor : new Color(255, 200, 0);
 
         GradientPaint gp = new GradientPaint(0, 0, top, 0, HEIGHT, bottom);
         g2.setPaint(gp);
@@ -368,110 +352,128 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
         g.setColor(Color.WHITE);
         FontMetrics fm = g.getFontMetrics();
+        g.setFont(new Font("Arial", Font.BOLD, 48));
 
         if (state == START_MENU) {
             g.setFont(new Font("Arial", Font.BOLD, 64));
             fm = g.getFontMetrics();
             drawCenteredString(g, "JAVA FIGHTER", 150, fm);
 
-            g.setFont(new Font("Arial", Font.PLAIN, 30));
-            fm = g.getFontMetrics();
-            drawCenteredString(g, "A GAME OF SKILL AND TIMING", 250, fm);
-
             g.setFont(new Font("Arial", Font.PLAIN, 24));
             fm = g.getFontMetrics();
             drawCenteredString(g, "Press ENTER to Begin", 350, fm);
             drawCenteredString(g, "Press ESC to Quit", 400, fm);
+
+        } else if (state == MODE_SELECT) {
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            fm = g.getFontMetrics();
+            drawCenteredString(g, "SELECT MODE", 150, fm);
+
+            g.setFont(new Font("Arial", Font.PLAIN, 30));
+            fm = g.getFontMetrics();
+            drawCenteredString(g, "1. LOCAL VERSUS (2 Players)", 250, fm);
+            drawCenteredString(g, "2. SINGLE PLAYER (VS AI)", 300, fm);
 
         } else if (state == CHARACTER_SELECT) {
             g.setFont(new Font("Arial", Font.BOLD, 48));
             fm = g.getFontMetrics();
             drawCenteredString(g, "SELECT YOUR FIGHTER", 100, fm);
 
-            drawCharacterSelection(g, 150, 200, p1SelectionIndex, "PLAYER 1 (A/D)", KeyEvent.VK_A, KeyEvent.VK_D);
-            drawCharacterSelection(g, WIDTH - 350, 200, p2SelectionIndex, "PLAYER 2 (Arrows)", KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT);
+            drawCharacterSelection(g2, 150, 200, p1SelectionIndex, "PLAYER 1 (A/D)", p2SelectionIndex);
+            drawCharacterSelection(g2, WIDTH - 350, 200, p2SelectionIndex, gameStateMode == AI_FIGHT ? "AI OPPONENT" : "PLAYER 2 (Arrows)", p1SelectionIndex);
 
-            g.setFont(new Font("Arial", Font.PLAIN, 24));
+            // Consolidated Stage Select Display
+            g.setFont(new Font("Arial", Font.BOLD, 24));
             fm = g.getFontMetrics();
-            drawCenteredString(g, "Press ENTER for Stage Select", 450, fm);
+            drawCenteredString(g, "STAGE: " + availableStages[selectedStageIndex].name, 450, fm);
 
-        } else if (state == STAGE_SELECT) {
-            g.setFont(new Font("Arial", Font.BOLD, 48));
+            g.setFont(new Font("Arial", Font.PLAIN, 18));
             fm = g.getFontMetrics();
-            drawCenteredString(g, "SELECT YOUR STAGE", 100, fm);
+            drawCenteredString(g, "Use Player 2's Arrows to Change Stage. Press ENTER to Fight!", 480, fm);
 
-            g.setFont(new Font("Arial", Font.PLAIN, 30));
-            fm = g.getFontMetrics();
-            drawCenteredString(g, availableStages[selectedStageIndex].name, 200, fm);
 
-            // Draw a simplified preview of the selected stage gradient
-            int previewWidth = 400;
-            int previewHeight = 150;
-            int previewX = (WIDTH - previewWidth) / 2;
-            int previewY = 230;
+        } else if (state == FIGHT || state == AI_FIGHT) {
+            // Draw Fighters
+            player1.draw(g);
+            player2.draw(g);
 
-            Stage current = availableStages[selectedStageIndex];
-            GradientPaint previewGp = new GradientPaint(previewX, previewY, current.topColor, previewX, previewY + previewHeight, current.bottomColor);
-            g2.setPaint(previewGp);
-            g2.fillRect(previewX, previewY, previewWidth, previewHeight);
+            // Draw HUD
+            drawHealthBar(g, 50, 50, player1.getHealth(), availableColors[p1SelectionIndex]);
+            drawHealthBar(g, WIDTH - 150, 50, player2.getHealth(), availableColors[p2SelectionIndex]);
 
-            // Draw selection marker
-            g.setColor(Color.WHITE);
-            g2.setStroke(new BasicStroke(4));
-            g2.drawRect(previewX - 2, previewY - 2, previewWidth + 4, previewHeight + 4);
+            drawSuperMeter(g, 50, 70, player1.getSuperMeter(), availableColors[p1SelectionIndex]);
+            drawSuperMeter(g, WIDTH - 150, 70, player2.getSuperMeter(), availableColors[p2SelectionIndex]);
 
-            g.setFont(new Font("Arial", Font.PLAIN, 24));
-            fm = g.getFontMetrics();
-            drawCenteredString(g, "Press A/D or Arrows to Choose. ENTER to Fight!", 450, fm);
+            drawStocks(g, 50, 95, p1Stocks, availableColors[p1SelectionIndex]);
+            drawStocks(g, WIDTH - 150, 95, p2Stocks, availableColors[p2SelectionIndex]);
 
-        } else if (state == FIGHT || state == GAME_OVER) {
-            // Draw Fighters (only if they exist)
-            if (player1 != null) player1.draw(g);
-            if (player2 != null) player2.draw(g);
-
-            // Draw HUD elements only during FIGHT or GAME_OVER
-            if (state == FIGHT || state == GAME_OVER) {
-                // Draw Health Bars
-                drawHealthBar(g, 50, 50, player1.getHealth(), availableColors[p1SelectionIndex]);
-                drawHealthBar(g, WIDTH - 150, 50, player2.getHealth(), availableColors[p2SelectionIndex]);
-
-                // Draw Super Meters
-                drawSuperMeter(g, 50, 70, player1.getSuperMeter(), availableColors[p1SelectionIndex]);
-                drawSuperMeter(g, WIDTH - 150, 70, player2.getSuperMeter(), availableColors[p2SelectionIndex]);
-
-                // Draw Stocks
-                drawStocks(g, 50, 95, p1Stocks, availableColors[p1SelectionIndex]);
-                drawStocks(g, WIDTH - 150, 95, p2Stocks, availableColors[p2SelectionIndex]);
-            }
-
-            // Draw ROUND END Message (Fixes overlap with FIGHT! splash)
+            // Draw ROUND END Message
             if (roundEndTimer > 0) {
                 g.setFont(new Font("Arial", Font.BOLD, 56));
                 fm = g.getFontMetrics();
                 drawCenteredString(g, roundEndMessage, 200, fm);
             }
-            // Draw "FIGHT!" splash (Only runs when roundEndTimer is NOT active)
+            // Draw "FIGHT!" splash
             else if (showFightText) {
                 g.setFont(new Font("Arial", Font.BOLD, 72));
                 fm = g.getFontMetrics();
                 drawCenteredString(g, "FIGHT!", 200, fm);
             }
 
-            if (state == GAME_OVER) {
-                g.setFont(new Font("Arial", Font.BOLD, 48));
-                fm = g.getFontMetrics();
-                drawCenteredString(g, winnerText, 200, fm);
-                g.setFont(new Font("Arial", Font.PLAIN, 24));
-                fm = g.getFontMetrics();
-                drawCenteredString(g, "Press R to Restart", 300, fm);
-                drawCenteredString(g, "Press ESC to Quit", 340, fm);
-            }
+        } else if (state == GAME_OVER) {
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            fm = g.getFontMetrics();
+            drawCenteredString(g, winnerText, 200, fm);
+            g.setFont(new Font("Arial", Font.PLAIN, 24));
+            fm = g.getFontMetrics();
+            drawCenteredString(g, "Press R to Restart", 300, fm);
+            drawCenteredString(g, "Press ESC to Quit", 340, fm);
         }
     }
 
     // --- Custom Drawing Methods ---
 
-    // Draws the stock indicators
+    private void drawCharacterSelection(Graphics2D g2, int x, int y, int selectionIndex, String label, int opponentIndex) {
+        g2.setFont(new Font("Arial", Font.BOLD, 24));
+        g2.drawString(label, x, y - 40);
+
+        final int boxSize = 60;
+        final int spriteSize = Fighter.SPRITE_SIZE; // 24
+
+        for (int i = 0; i < availableColors.length; i++) {
+            int boxX = x + i * boxSize;
+            int boxY = y;
+
+            // 1. Draw Color Box Background
+            g2.setColor(availableColors[i].darker());
+            g2.fillRect(boxX, boxY, boxSize - 10, boxSize - 10);
+
+            // 2. Draw Sprite Preview
+            BufferedImage sprite = fighterAssetSets.get(i).idleSprite;
+            if (sprite != null) {
+                int spriteDrawX = boxX + (boxSize - 10) / 2 - spriteSize / 2;
+                int spriteDrawY = boxY + (boxSize - 10) / 2 - spriteSize / 2;
+                g2.drawImage(sprite, spriteDrawX, spriteDrawY, spriteSize, spriteSize, null);
+            }
+
+            // 3. Draw Selection Frame/Indicator
+            if (i == selectionIndex) {
+                g2.setColor(Color.WHITE);
+                Stroke oldStroke = g2.getStroke();
+                g2.setStroke(new BasicStroke(3));
+                g2.drawRect(boxX - 5, boxY - 5, boxSize, boxSize);
+                g2.setStroke(oldStroke);
+            }
+
+            // 4. Draw 'X' if opponent has picked this character/color
+            if (i == opponentIndex && i != selectionIndex) {
+                g2.setColor(Color.RED);
+                g2.setFont(new Font("Arial", Font.BOLD, 30));
+                g2.drawString("X", boxX + 10, boxY + 40);
+            }
+        }
+    }
+
     private void drawStocks(Graphics g, int x, int y, int stocks, Color color) {
         final int STOCK_SIZE = 15;
         final int GAP = 5;
@@ -491,47 +493,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             g.fillOval(stockX, y - STOCK_SIZE + 2, STOCK_SIZE, STOCK_SIZE);
             g.setColor(Color.BLACK);
             g.drawOval(stockX, y - STOCK_SIZE + 2, STOCK_SIZE, STOCK_SIZE);
-        }
-    }
-
-    private void drawCharacterSelection(Graphics g, int x, int y, int selectionIndex, String label, int leftKey, int rightKey) {
-        g.setFont(new Font("Arial", Font.BOLD, 24));
-        g.drawString(label, x, y - 40);
-
-        // Loop runs 4 times for the 4 available colors/sprites
-        for (int i = 0; i < availableColors.length; i++) {
-            int boxX = x + i * 60;
-
-            // 1. Determine which asset set to use for this color index
-            int assetIndex = i; // Asset index matches color index (0-3)
-
-            // 2. Draw the actual Sprite or fallback
-            if (fighterAssetSets.size() > assetIndex && fighterAssetSets.get(assetIndex).idleSprite != null) {
-                // Draw the loaded sprite
-                BufferedImage sprite = fighterAssetSets.get(assetIndex).idleSprite;
-                g.drawImage(sprite, boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE, null);
-            } else {
-                // Fallback: Draw the old colored circle if sprites failed to load
-                g.setColor(availableColors[i]);
-                g.fillOval(boxX, y, Fighter.SPRITE_SIZE, Fighter.SPRITE_SIZE);
-            }
-
-            // 3. Draw Selection Outline
-            if (i == selectionIndex) {
-                g.setColor(Color.WHITE);
-                Graphics2D g2 = (Graphics2D) g;
-                Stroke oldStroke = g2.getStroke();
-                g2.setStroke(new BasicStroke(3));
-                g2.drawRect(boxX - 5, y - 5, Fighter.SPRITE_SIZE + 10, Fighter.SPRITE_SIZE + 10);
-                g2.setStroke(oldStroke);
-            }
-
-            // 4. Draw X over the opponent's currently selected color
-            if (i == (label.contains("PLAYER 1") ? p2SelectionIndex : p1SelectionIndex) && i != selectionIndex) {
-                g.setColor(Color.BLACK);
-                g.setFont(new Font("Arial", Font.BOLD, 24));
-                g.drawString("X", boxX + 15, y + Fighter.SPRITE_SIZE - 5);
-            }
         }
     }
 
@@ -573,48 +534,92 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     @Override
     public void keyPressed(KeyEvent e) {
+        // --- Input Gate Check (Must be at the top) ---
+        if (menuTransitionTimer > 0) {
+            if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                System.exit(0);
+            }
+            return;
+        }
+
         keys[e.getKeyCode()] = true;
+        int max = availableColors.length;
 
         if (state == START_MENU) {
             if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                state = CHARACTER_SELECT;
+                keys[KeyEvent.VK_ENTER] = false;
+                state = MODE_SELECT;
+                menuTransitionTimer = 5;
             } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                 System.exit(0);
             }
-        } else if (state == CHARACTER_SELECT) {
-            if (e.getKeyCode() == KeyEvent.VK_A) {
-                p1SelectionIndex = (p1SelectionIndex - 1 + availableColors.length) % availableColors.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_D) {
-                p1SelectionIndex = (p1SelectionIndex + 1) % availableColors.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_LEFT) {
-                p2SelectionIndex = (p2SelectionIndex - 1 + availableColors.length) % availableColors.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
-                p2SelectionIndex = (p2SelectionIndex + 1) % availableColors.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                state = STAGE_SELECT;
+        } else if (state == MODE_SELECT) {
+            if (e.getKeyCode() == KeyEvent.VK_1) {
+                keys[KeyEvent.VK_1] = false;
+                gameStateMode = FIGHT;
+                state = CHARACTER_SELECT;
+                menuTransitionTimer = 5;
+            } else if (e.getKeyCode() == KeyEvent.VK_2) {
+                keys[KeyEvent.VK_2] = false;
+                gameStateMode = AI_FIGHT;
+                state = CHARACTER_SELECT;
+                menuTransitionTimer = 5;
             }
-        } else if (state == STAGE_SELECT) {
-            if (e.getKeyCode() == KeyEvent.VK_A || e.getKeyCode() == KeyEvent.VK_LEFT) {
-                selectedStageIndex = (selectedStageIndex - 1 + availableStages.length) % availableStages.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_D || e.getKeyCode() == KeyEvent.VK_RIGHT) {
-                selectedStageIndex = (selectedStageIndex + 1) % availableStages.length;
-            } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+        } else if (state == CHARACTER_SELECT) {
+            // P1 Character Selection
+            if (e.getKeyCode() == KeyEvent.VK_A) {
+                p1SelectionIndex = (p1SelectionIndex - 1 + max) % max;
+            } else if (e.getKeyCode() == KeyEvent.VK_D) {
+                p1SelectionIndex = (p1SelectionIndex + 1) % max;
+            }
+
+            // P2 Character Selection (Local Mode)
+            if (gameStateMode == FIGHT) {
+                if (e.getKeyCode() == KeyEvent.VK_LEFT) {
+                    p2SelectionIndex = (p2SelectionIndex - 1 + max) % max;
+                } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
+                    p2SelectionIndex = (p2SelectionIndex + 1) % max;
+                }
+            } else {
+                // AI Mode: P2 selection follows P1
+                p2SelectionIndex = (p1SelectionIndex + 1) % max;
+
+                // AI Mode: Use P2's Arrow Keys for STAGE Selection
+                int stageMax = availableStages.length;
+                if (e.getKeyCode() == KeyEvent.VK_LEFT) {
+                    selectedStageIndex = (selectedStageIndex - 1 + stageMax) % stageMax;
+                } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
+                    selectedStageIndex = (selectedStageIndex + 1) % stageMax;
+                }
+            }
+
+            // Final Transition to Fight
+            if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                keys[KeyEvent.VK_ENTER] = false;
+
+                // START FIGHT! (Consolidated Logic)
                 initializeFighters();
-                state = FIGHT;
                 showFightText = true;
                 fightTimer = FIGHT_SPLASH_DURATION;
+
+                // Set the final state (FIGHT or AI_FIGHT)
+                state = gameStateMode;
             }
-        } else if (state == FIGHT) {
-            // Only allow input if the round pause timer is NOT active
+        } else if (state == FIGHT || state == AI_FIGHT) {
             if (roundEndTimer == 0) {
+                // P1 Input (Always Active)
                 if (e.getKeyCode() == player1.attackKey) player1.attack();
-                if (e.getKeyCode() == player2.attackKey) player2.attack();
                 if (e.getKeyCode() == player1.superAttackKey) player1.superAttack();
-                if (e.getKeyCode() == player2.superAttackKey) player2.superAttack();
                 if (e.getKeyCode() == player1.dashFwdKey) player1.dashForward();
-                if (e.getKeyCode() == player2.dashFwdKey) player2.dashForward();
                 if (e.getKeyCode() == player1.dashBackKey) player1.dashBack();
-                if (e.getKeyCode() == player2.dashBackKey) player2.dashBack();
+
+                // P2 Input (Only Active in Local FIGHT Mode)
+                if (state == FIGHT) {
+                    if (e.getKeyCode() == player2.attackKey) player2.attack();
+                    if (e.getKeyCode() == player2.superAttackKey) player2.superAttack();
+                    if (e.getKeyCode() == player2.dashFwdKey) player2.dashForward();
+                    if (e.getKeyCode() == player2.dashBackKey) player2.dashBack();
+                }
             }
         } else if (state == GAME_OVER) {
             if (e.getKeyCode() == KeyEvent.VK_R) {

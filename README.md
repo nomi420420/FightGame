@@ -60,9 +60,30 @@ The game is designed for two players sharing a single keyboard.
 ## How to Run
 
 1. Clone the repository
-2. Compile and run the `FightingGame` class
-3. Press ENTER to start the game
-4. Enjoy the match!
+2. Ensure you have Java 21 or higher installed
+3. Verify the `assets/` folder contains all sprite sheets and sounds
+4. Compile and run the `FightingGame` class
+5. Select your game mode with 1 (Local) or 2 (AI)
+6. Choose your fighters and stage
+7. Press ENTER to start the match
+8. Enjoy the fight!
+
+## Game Flow
+
+1. **Start Menu**: Press ENTER to begin
+2. **Mode Select**: Choose Local Versus or AI mode
+3. **Character Select**: Pick your fighter (and opponent in local mode)
+4. **Stage Select**: Choose your battle arena
+5. **Fight**: Best-of-3 stocks combat
+6. **Game Over**: Winner declared, option to restart or quit
+
+## Technical Details
+
+- **Frame Rate**: 60 FPS
+- **Screen Resolution**: 800x500 pixels
+- **Physics**: Custom gravity and velocity system
+- **Animation**: Sprite-based with automatic frame cycling
+- **Collision**: Rectangle-based hitbox detection
 
 ## Future Updates
 
