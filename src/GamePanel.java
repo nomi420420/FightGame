@@ -16,7 +16,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int HEIGHT = 500;
     private static final int GAME_FPS = 60;
     private static final int ROUND_DURATION_SECONDS = 90; // 1 minute 30 seconds
-    private static final int GROUND_Y = 400;
+    private static final int GROUND_Y = 400; // PHYSICAL GROUND LINE (Matching Fighter.java)
+    private static final int GROUND_VISUAL_OFFSET = 5; // Moves the green block up 5px to meet sprite feet
     private static final int INITIAL_STOCKS = 3;
     private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause
     private static final int MAX_SPARKS_PER_HIT = 12; // Controls spark intensity
@@ -38,7 +39,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static class Stage {
         String name;
         Color topColor;
-        Color bottomColor;
+        Color bottomColor; // Now used for mid-ground color
 
         public Stage(String name, Color top, Color bottom) {
             this.name = name;
@@ -67,17 +68,20 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     // NEW: List to hold active spark particles
     private final ArrayList<Spark> activeSparks = new ArrayList<>();
 
-    // CHARACTER SELECT FIELDS (FIXED TO 4 CHOICES)
-    private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW};
+    // NEW: Field for the ground tile image
+    private BufferedImage groundTileSprite;
+
+    // CHARACTER SELECT FIELDS (7 CHOICES)
+    private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW, Color.CYAN, Color.ORANGE, Color.PINK};
     private int p1SelectionIndex = 0;
     private int p2SelectionIndex = 1;
 
     // STAGE SELECT FIELDS
     private final Stage[] availableStages = {
-            new Stage("Daytime City", new Color(255, 80, 0), new Color(255, 200, 0)),
-            new Stage("Night Arena", new Color(20, 20, 80), new Color(50, 50, 150)),
-            new Stage("Volcano Summit", new Color(150, 50, 0), new Color(255, 100, 0)),
-            new Stage("Frost Peaks", new Color(150, 200, 255), new Color(220, 240, 255))
+            new Stage("Daytime City", new Color(135, 206, 235), new Color(240, 240, 240)),
+            new Stage("Night Arena", new Color(0, 0, 50), new Color(40, 40, 90)),
+            new Stage("Volcano Summit", new Color(150, 50, 0), new Color(70, 70, 70)),
+            new Stage("Frost Peaks", new Color(150, 200, 255), new Color(200, 220, 240))
     };
     private int selectedStageIndex = 0;
 
@@ -119,84 +123,127 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         final int FRAME_SIZE = Fighter.SPRITE_SIZE; // 100
         final int RUN_FRAME_COUNT = Fighter.RUN_FRAME_COUNT; // 6
         final int ATTACK_FRAME_COUNT = Fighter.ATTACK_FRAME_COUNT; // 6
-        final int TOTAL_CHARACTER_SHEETS = availableColors.length; // NOW 4
 
-        for (int i = 0; i < TOTAL_CHARACTER_SHEETS; i++) {
+        final int UNIQUE_SPRITE_SHEETS = 4;
+
+        // --- TILE ASSET LOADING ---
+        try {
+            // FIX 1: Looking for ground_tiles.jpg
+            BufferedImage tileSheet = ImageIO.read(new File("assets/ground_tiles.jpg"));
+
+            // FIX 2: Slicing the usable grass area (Row 0, Column 1 is the large grass block)
+            // Slicing 400px wide area (4 tiles) by 100px tall
+            BufferedImage originalSlice = tileSheet.getSubimage(100, 0, 400, 100);
+
+            // Resize the sliced image to 100x100 so it tiles cleanly (uses the visual quality of the wider tile)
+            groundTileSprite = new BufferedImage(FRAME_SIZE, FRAME_SIZE, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2 = groundTileSprite.createGraphics();
+            g2.drawImage(originalSlice, 0, 0, FRAME_SIZE, FRAME_SIZE, null);
+            g2.dispose();
+
+        } catch (IOException e) {
+            System.err.println("Warning: Could not load assets/ground_tiles.jpg. Using solid color fallback. Error: " + e.getMessage());
+            // Create a temporary black fallback tile
+            groundTileSprite = new BufferedImage(FRAME_SIZE, FRAME_SIZE, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2_fallback = groundTileSprite.createGraphics();
+            g2_fallback.setColor(new Color(50, 50, 50));
+            g2_fallback.fillRect(0, 0, FRAME_SIZE, FRAME_SIZE);
+            g2_fallback.dispose();
+        }
+        // --------------------------
+
+
+        for (int i = 0; i < availableColors.length; i++) {
             FighterAssets assets = new FighterAssets();
-            try {
-                BufferedImage baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet_" + i + ".png"));
 
-                if (baseSpriteSheet.getHeight() < FRAME_SIZE * 6) {
-                    System.err.println("Sprite sheet for index " + i + " is too short. Expected at least 600px tall.");
-                    throw new IOException("Sheet height is incorrect.");
+            if (i < UNIQUE_SPRITE_SHEETS) {
+                try {
+                    BufferedImage baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet_" + i + ".png"));
+
+                    if (baseSpriteSheet.getHeight() < FRAME_SIZE * 6) {
+                        System.err.println("Sprite sheet for index " + i + " is too short. Expected at least 600px tall.");
+                        throw new IOException("Sheet height is incorrect.");
+                    }
+
+                    // --- SLICING LOGIC ---
+                    if (i == 2) {
+                        // Armored Skeleton Layout (Specific columns/rows)
+                        assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+                        assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
+                        for (int j = 0; j < RUN_FRAME_COUNT; j++) {
+                            int xOffset = j * FRAME_SIZE;
+                            int yOffset = 1 * FRAME_SIZE; // Row 1
+                            assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                        }
+
+                        assets.jumpSprite = baseSpriteSheet.getSubimage(5 * FRAME_SIZE, 0, FRAME_SIZE, FRAME_SIZE);
+                        assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                        assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+
+                        assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
+                        for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
+                            int xOffset = (j + 1) * FRAME_SIZE;
+                            int yOffset = 2 * FRAME_SIZE; // Row 2
+                            assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                        }
+                    }
+                    // Default Layout (Orc/Knight)
+                    else {
+                        assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+                        assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
+                        for (int j = 0; j < RUN_FRAME_COUNT; j++) {
+                            int xOffset = j * FRAME_SIZE;
+                            int yOffset = 1 * FRAME_SIZE; // Row 1
+                            assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                        }
+
+                        assets.jumpSprite = baseSpriteSheet.getSubimage(0, 5 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                        assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                        assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+
+                        assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
+                        for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
+                            int xOffset = j * FRAME_SIZE;
+                            int yOffset = 2 * FRAME_SIZE; // Row 2
+                            assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                        }
+                    }
+
+                    fighterAssetSets.add(assets);
+
+                } catch (IOException e) {
+                    System.err.println("Error loading sprite sheet for index " + i + ": " + e.getMessage());
+
+                    // Fallback: Create a placeholder sprite if image loading fails
+                    final int FALLBACK_SIZE = FRAME_SIZE;
+                    BufferedImage fallback = new BufferedImage(FALLBACK_SIZE, FALLBACK_SIZE, BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2_fallback = fallback.createGraphics();
+                    g2_fallback.setColor(Color.RED); // Use red to clearly indicate fallback
+                    g2_fallback.fillRect(0, 0, FALLBACK_SIZE, FALLBACK_SIZE);
+                    g2_fallback.dispose();
+
+                    // Ensure fallbacks match required size (6 frames run/attack)
+                    assets.idleSprite = fallback;
+                    assets.runSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
+                    assets.attackSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
+                    assets.jumpSprite = fallback;
+                    assets.hurtSprite = fallback;
+                    assets.downSprite = fallback;
+                    fighterAssetSets.add(assets);
                 }
+            } else {
+                // --- FALLBACK FOR INDEXES 4, 5, 6 ---
+                FighterAssets lastAssets = fighterAssetSets.get(UNIQUE_SPRITE_SHEETS - 1);
 
-                // --- SLICING LOGIC ---
-                // Slicing logic remains dynamic for Orc (i=0, i=1, i=3) and Skeleton (i=2)
-                if (i == 2) {
-                    // Armored Skeleton Layout (Specific columns/rows)
-                    assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
-                    assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
-                    for (int j = 0; j < RUN_FRAME_COUNT; j++) {
-                        int xOffset = j * FRAME_SIZE;
-                        int yOffset = 1 * FRAME_SIZE; // Row 1
-                        assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
-                    }
+                FighterAssets cloneAssets = new FighterAssets();
+                cloneAssets.idleSprite = lastAssets.idleSprite;
+                cloneAssets.runSprites = lastAssets.runSprites;
+                cloneAssets.attackSprites = lastAssets.attackSprites;
+                cloneAssets.jumpSprite = lastAssets.jumpSprite;
+                cloneAssets.hurtSprite = lastAssets.hurtSprite;
+                cloneAssets.downSprite = lastAssets.downSprite;
 
-                    assets.jumpSprite = baseSpriteSheet.getSubimage(5 * FRAME_SIZE, 0, FRAME_SIZE, FRAME_SIZE);
-                    assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-                    assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-
-                    assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
-                    for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
-                        int xOffset = (j + 1) * FRAME_SIZE;
-                        int yOffset = 2 * FRAME_SIZE; // Row 2
-                        assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
-                    }
-                }
-                // Default Layout (Orc/Knight)
-                else {
-                    assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
-                    assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
-                    for (int j = 0; j < RUN_FRAME_COUNT; j++) {
-                        int xOffset = j * FRAME_SIZE;
-                        int yOffset = 1 * FRAME_SIZE; // Row 1
-                        assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
-                    }
-
-                    assets.jumpSprite = baseSpriteSheet.getSubimage(0, 5 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-                    assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-                    assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-
-                    assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
-                    for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
-                        int xOffset = j * FRAME_SIZE;
-                        int yOffset = 2 * FRAME_SIZE; // Row 2
-                        assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
-                    }
-                }
-
-                fighterAssetSets.add(assets);
-
-            } catch (IOException e) {
-                System.err.println("Error loading sprite sheet for index " + i + ": " + e.getMessage());
-
-                // Fallback: Create a placeholder sprite if image loading fails
-                final int FALLBACK_SIZE = Fighter.SPRITE_SIZE;
-                BufferedImage fallback = new BufferedImage(FALLBACK_SIZE, FALLBACK_SIZE, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g2_fallback = fallback.createGraphics();
-                g2_fallback.setColor(Color.RED);
-                g2_fallback.fillRect(0, 0, FALLBACK_SIZE, FALLBACK_SIZE);
-                g2_fallback.dispose();
-
-                // Ensure fallbacks match required size (6 frames run/attack)
-                assets.idleSprite = fallback;
-                assets.runSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
-                assets.attackSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
-                assets.jumpSprite = fallback;
-                assets.hurtSprite = fallback;
-                assets.downSprite = fallback;
-                fighterAssetSets.add(assets);
+                fighterAssetSets.add(cloneAssets);
             }
         }
     }
@@ -270,7 +317,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player1.resetHealth();
                     player2.resetHealth();
 
-                    // Reset positions for start of round
+                    // Reset positions for start of round (Recalculated)
                     player1.setX(P1_START_X);
                     player1.setY(GROUND_Y - player1.getRect().height);
                     player2.setX(P2_START_X);
@@ -473,9 +520,25 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
         // Ground (Only draw ground in fight/game over states)
         if (state >= FIGHT) {
-            g.setColor(Color.GREEN.darker());
-            g.fillRect(0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y);
+            final int TILE_SIZE = Fighter.SPRITE_SIZE; // 100
+
+            // --- TILE DRAWING FIX ---
+            if (groundTileSprite != null) {
+                int startY = GROUND_Y - GROUND_VISUAL_OFFSET;
+
+                // Tile the ground area
+                for (int x = 0; x < WIDTH; x += TILE_SIZE) {
+                    for (int y = startY; y < HEIGHT; y += TILE_SIZE) {
+                        g2.drawImage(groundTileSprite, x, y, TILE_SIZE, TILE_SIZE, null);
+                    }
+                }
+            } else {
+                // FALLBACK: Draw the solid color if the tile sheet failed to load
+                g.setColor(Color.GREEN.darker());
+                g.fillRect(0, GROUND_Y - GROUND_VISUAL_OFFSET, WIDTH, HEIGHT - GROUND_Y + GROUND_VISUAL_OFFSET);
+            }
         }
+        // --------------------------
 
         g.setColor(Color.WHITE);
         FontMetrics fm = g.getFontMetrics();

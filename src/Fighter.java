@@ -7,10 +7,18 @@ public class Fighter {
     private static final int MOVEMENT_SPEED = 5;
     private static final int JUMP_VELOCITY = -15;
     private static final int GRAVITY_ACCELERATION = 1;
-    private static final int GROUND_Y = 400;
+    private static final int GROUND_Y = 500; // UPDATED: Moved ground line down (closer to screen bottom)
 
     // Attack and Animation
-    public static final int SPRITE_SIZE = 100; // Physical size of the fighter (pixels)
+    public static final int SPRITE_SIZE = 100; // Visual size of the fighter (pixels)
+
+    // --- NEW CONSTANT FOR VISUAL ALIGNMENT ---
+    private static final int SPRITE_VERTICAL_OFFSET = 40; // Shifts the drawn sprite down 40px
+
+    // --- COLLISION CONSTANTS ---
+    private static final int COLLISION_WIDTH = 20;
+    private static final int COLLISION_OFFSET_X = (SPRITE_SIZE - COLLISION_WIDTH) / 2;
+
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
     private static final int STAND_HEIGHT = SPRITE_SIZE;
@@ -19,10 +27,10 @@ public class Fighter {
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
 
-    // Attack Hitbox Constants (ENLARGED for better gameplay feel)
+    // Attack Hitbox Constants (Updated for 50px size)
     private static final int ATTACK_HITBOX_WIDTH = 35; // Increased horizontal reach
     private static final int ATTACK_HITBOX_HEIGHT = 22; // Slightly increased vertical size
-    private static final int STAND_ATTACK_OFFSET_Y = 30; // Hits mid-level (y=30)
+    private static final int STAND_ATTACK_OFFSET_Y = 30;  // Hits mid-level (y=30)
     private static final int CROUCH_ATTACK_OFFSET_Y = 5;   // Hits low (y=5)
 
     // Dashing
@@ -52,18 +60,18 @@ public class Fighter {
     public static final int ATTACK_FRAME_COUNT = 6;
 
     // --- Private Fields (Encapsulation) ---
-    private int x, y;
-    private final int width = SPRITE_SIZE;
+    private int x, y; // Y is now accessible via getter
+    private final int width = SPRITE_SIZE; // Drawing width remains 50
     private final int MAX_X_BOUND = SCREEN_WIDTH - width;
 
     private int height;
     private final Color color;
     private BufferedImage idleSprite;
     private BufferedImage[] runSprites;
-    private BufferedImage[] attackSprites; // New array for attack animation
-    private BufferedImage jumpSprite; // Dedicated jump sprite
-    private BufferedImage hurtSprite; // Dedicated hurt sprite
-    private BufferedImage downSprite; // Dedicated down sprite
+    private BufferedImage[] attackSprites;
+    private BufferedImage jumpSprite;
+    private BufferedImage hurtSprite;
+    private BufferedImage downSprite;
 
     private int velY = 0;
     private float velX = 0;
@@ -106,9 +114,9 @@ public class Fighter {
         this.idleSprite = idleSprite;
         this.runSprites = runSprites;
         this.attackSprites = attackSprites;
-        this.jumpSprite = jumpSprite; // Store the jump sprite
-        this.hurtSprite = hurtSprite; // Store the hurt sprite
-        this.downSprite = downSprite; // Store the down sprite
+        this.jumpSprite = jumpSprite;
+        this.hurtSprite = hurtSprite;
+        this.downSprite = downSprite;
         this.leftKey = left;
         this.rightKey = right;
         this.jumpKey = jump;
@@ -269,7 +277,13 @@ public class Fighter {
     }
 
     // --- Getters and Setters ---
-    public Rectangle getRect() { return new Rectangle(x, y, width, height); }
+    /** Returns the smaller, physical collision box for fighter-to-fighter checks. */
+    public Rectangle getRect() {
+        int currentCollisionHeight = isCrouching ? CROUCH_HEIGHT : STAND_HEIGHT;
+        // Uses smaller width (20) and offsets it (15) from the main X coordinate
+        return new Rectangle(x + COLLISION_OFFSET_X, y, COLLISION_WIDTH, currentCollisionHeight);
+    }
+
     public int getHealth() { return health; }
     public int getDirection() { return direction; }
     public boolean isBlockOnCooldown() { return isBlockOnCooldown; }
@@ -504,8 +518,9 @@ public class Fighter {
                     drawWidth = -width;
                 }
 
-                // Draw the sprite, using the fighter's width/height constraints
-                g2.drawImage(currentSprite, drawX, y, drawWidth, height, null);
+                // --- APPLIED VERTICAL OFFSET FOR DRAWING ---
+                // Shifts the sprite down 40px to meet the feet on the ground line (GROUND_Y=400)
+                g2.drawImage(currentSprite, drawX, y + SPRITE_VERTICAL_OFFSET, drawWidth, height, null);
             } else {
                 // FALLBACK: Draw color block if sprite not found
                 g.setColor(color);
