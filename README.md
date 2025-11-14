@@ -71,10 +71,10 @@ The game is designed for two players sharing a single keyboard.
 ## Character Selection
 
 Choose from 4 unique fighters, each with their own color scheme and sprite animation:
-- **Blue Fighter** (Default P1)
-- **Red Fighter** (Default P2)
-- **Magenta Fighter**
-- **Yellow Fighter**
+- **Orc** (Default P1)
+- **Knight** (Default P2)
+- **Skeleton**
+- **Guardsman**
 
 ## Stage Selection
 
