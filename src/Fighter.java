@@ -51,7 +51,7 @@ public class Fighter {
     public static final int ATTACK_FRAME_COUNT = 8; // Used for slicing 8 frames
 
     // --- Private Fields (Encapsulation) ---
-    private int x, y;
+    private int x, y; // Y is now accessible via getter
     private final int width = SPRITE_SIZE;
     private final int MAX_X_BOUND = SCREEN_WIDTH - width;
 
@@ -267,6 +267,7 @@ public class Fighter {
     public int getDirection() { return direction; }
     public boolean isBlockOnCooldown() { return isBlockOnCooldown; }
     public int getX() { return x; }
+    public int getY() { return y; }
     public float getSuperMeter() { return superMeter; }
     public boolean isInvulnerable() { return invulnerabilityTimer > 0; }
     public boolean isKnockedDown() { return isKnockedDown || knockdownTimer > 0; }
@@ -449,9 +450,10 @@ public class Fighter {
         // 1. Determine which sprite frame to draw
         BufferedImage currentSprite = idleSprite;
 
-        // Prioritize Run Animation if running on the ground
-        if (runSprites != null && isRunning && onGround) {
-            currentSprite = runSprites[frameIndex];
+        // Prioritize Jump Sprite if airborne
+        if (!onGround) {
+            // If fighter is airborne, use the idle sprite as a fallback for the jump frame
+            currentSprite = idleSprite;
         }
         // --- ATTACK ANIMATION ---
         else if (attackCooldown > 0 && attackSprites != null) {
@@ -463,7 +465,10 @@ public class Fighter {
             }
             currentSprite = attackSprites[attackFrameIndex];
         }
-        // ------------------------
+        // --- RUNNING ANIMATION ---
+        else if (runSprites != null && isRunning && onGround) {
+            currentSprite = runSprites[frameIndex];
+        }
 
         // 2. Invulnerability Flash Check
         boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
@@ -499,7 +504,8 @@ public class Fighter {
             g.fillRect(x - 5, y - 5, width + 10, height + 10);
         }
 
-        // Draw the attack indicator (hitbox visualization)
+        // --- HITBOX VISUALIZATION REMOVED HERE ---
+        /*
         if (isAttackActive()) {
             g.setColor(Color.YELLOW);
             Rectangle ar = getAttackRect();
@@ -507,5 +513,6 @@ public class Fighter {
                 g.fillRect(ar.x, ar.y, ar.width, ar.height);
             }
         }
+        */
     }
 }

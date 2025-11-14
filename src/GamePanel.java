@@ -19,6 +19,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int GROUND_Y = 400;
     private static final int INITIAL_STOCKS = 3;
     private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause
+    private static final int MAX_SPARKS_PER_HIT = 12; // Controls spark intensity
 
     // Game States
     private final int START_MENU = 0, MODE_SELECT = 1, CHARACTER_SELECT = 2, FIGHT = 4, AI_FIGHT = 5, GAME_OVER = 6;
@@ -51,6 +52,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         BufferedImage idleSprite;
         BufferedImage[] runSprites;
         BufferedImage[] attackSprites;
+        // REMOVED: BufferedImage jumpSprite;
     }
 
     // --- 2. FIELDS ---
@@ -59,6 +61,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     // ASSET FIELDS
     private final ArrayList<FighterAssets> fighterAssetSets = new ArrayList<>();
+
+    // NEW: List to hold active spark particles
+    private final ArrayList<Spark> activeSparks = new ArrayList<>();
 
     // CHARACTER SELECT FIELDS (4 CHOICES)
     private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW};
@@ -87,7 +92,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private int roundEndTimer = 0;
     private String roundEndMessage = "";
 
-    private int roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS; // NEW: Timer in frames
+    private int roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS;
 
     private String winnerText = "";
 
@@ -244,7 +249,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     roundEndMessage = "";
                     showFightText = true;
                     fightTimer = FIGHT_SPLASH_DURATION;
-                    // RESET ROUND TIMER HERE
                     roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS;
                 }
                 repaint();
@@ -256,9 +260,18 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 roundTimeRemaining--;
             }
 
+            // --- UPDATE SPARKS ---
+            for (int i = activeSparks.size() - 1; i >= 0; i--) {
+                Spark s = activeSparks.get(i);
+                s.update();
+                if (!s.isAlive()) {
+                    activeSparks.remove(i);
+                }
+            }
+            // -------------------------
+
             // --- CHECK FOR TIME OVER ---
             if (roundTimeRemaining <= 0) {
-                // Determine winner based on remaining health (if health is equal, it's a draw/time out)
                 if (player1.getHealth() != player2.getHealth()) {
                     if (player1.getHealth() > player2.getHealth()) {
                         roundEndMessage = "Player 1 Wins Round (Time)!";
@@ -269,10 +282,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     }
                 } else {
                     roundEndMessage = "Time Over - Draw!";
-                    // For a draw, you could deduct a stock from both or neither. We'll deduct neither for simplicity.
                 }
 
-                // Trigger round end pause
                 if (p1Stocks <= 0 || p2Stocks <= 0) {
                     winnerText = (p1Stocks <= 0) ? "Player 2 Wins!" : (p2Stocks <= 0) ? "Player 1 Wins!" : "DRAW!";
                     state = GAME_OVER;
@@ -325,7 +336,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player2.takeDamage(damage, player1.getDirection());
                     player1.registerHit(isSuper);
                     player1.gainMeter(isSuper ? Fighter.METER_GAIN_HIT * 2 : Fighter.METER_GAIN_HIT);
-                    SoundPlayer.playSound("assets/sounds/" + (player2.isBlocking() ? "block.wav" : (isSuper ? "hit_super.wav" : "hit_regular.wav")));
+
+                    // Generate sparks/sound based on result
+                    if (player2.isBlocking()) {
+                        SoundPlayer.playSound("assets/sounds/block.wav");
+                        generateSparks(player2.getX() + player2.getRect().width / 2, player2.getY() + player2.getRect().height / 2, MAX_SPARKS_PER_HIT / 2);
+                    } else if (!isSuper) {
+                        SoundPlayer.playSound("assets/sounds/hit_regular.wav");
+                        generateSparks(player2.getX() + player2.getRect().width / 2, player2.getY() + player2.getRect().height / 2, MAX_SPARKS_PER_HIT);
+                    } else {
+                        SoundPlayer.playSound("assets/sounds/hit_super.wav");
+                    }
                 }
             }
 
@@ -338,11 +359,21 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     player1.takeDamage(damage, player2.getDirection());
                     player2.registerHit(isSuper);
                     player2.gainMeter(isSuper ? Fighter.METER_GAIN_HIT * 2 : Fighter.METER_GAIN_HIT);
-                    SoundPlayer.playSound("assets/sounds/" + (player1.isBlocking() ? "block.wav" : (isSuper ? "hit_super.wav" : "hit_regular.wav")));
+
+                    // Generate sparks/sound based on result
+                    if (player1.isBlocking()) {
+                        SoundPlayer.playSound("assets/sounds/block.wav");
+                        generateSparks(player1.getX() + player1.getRect().width / 2, player1.getY() + player1.getRect().height / 2, MAX_SPARKS_PER_HIT / 2);
+                    } else if (!isSuper) {
+                        SoundPlayer.playSound("assets/sounds/hit_regular.wav");
+                        generateSparks(player1.getX() + player1.getRect().width / 2, player1.getY() + player1.getRect().height / 2, MAX_SPARKS_PER_HIT);
+                    } else {
+                        SoundPlayer.playSound("assets/sounds/hit_super.wav");
+                    }
                 }
             }
 
-            // --- CHECK FOR HEALTH/STOCK LOSS (ROUND END) ---
+            // --- CHECK FOR HEALTH/STOCK LOSS (ROUND/MATCH END) ---
             boolean stockLost = false;
             String finalWinner = null;
 
@@ -383,6 +414,13 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             }
         }
         repaint();
+    }
+
+    // NEW: Helper method to generate a burst of sparks
+    private void generateSparks(int centerX, int centerY, int count) {
+        for (int i = 0; i < count; i++) {
+            activeSparks.add(new Spark(centerX, centerY));
+        }
     }
 
     // --- 5. DRAWING (paintComponent) ---
@@ -455,6 +493,11 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             player1.draw(g);
             player2.draw(g);
 
+            // Draw Sparks (NEW)
+            for (Spark s : activeSparks) {
+                s.draw(g);
+            }
+
             // Draw HUD
             drawHealthBar(g, 50, 50, player1.getHealth(), availableColors[p1SelectionIndex]);
             drawHealthBar(g, WIDTH - 150, 50, player2.getHealth(), availableColors[p2SelectionIndex]);
@@ -498,6 +541,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     // --- Custom Drawing Methods ---
 
+    // Helper method to draw a centered string with simulated shadow
+    private void drawCenteredString(Graphics g, String text, int y, FontMetrics fm, Color color) {
+        int x_pos = (WIDTH - fm.stringWidth(text)) / 2;
+        // Draw Shadow
+        g.setColor(Color.BLACK);
+        g.drawString(text, x_pos + 3, y + 3);
+        // Draw Foreground
+        g.setColor(color);
+        g.drawString(text, x_pos, y);
+    }
+
     private void drawTimer(Graphics g, FontMetrics fm) {
         int seconds = roundTimeRemaining / GAME_FPS;
 
@@ -516,17 +570,6 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         int y_pos = 65; // Position in the center top of the screen
 
         drawCenteredString(g, timeString, y_pos, fm, timeColor);
-    }
-
-    // Helper method to draw a centered string with simulated shadow
-    private void drawCenteredString(Graphics g, String text, int y, FontMetrics fm, Color color) {
-        int x_pos = (WIDTH - fm.stringWidth(text)) / 2;
-        // Draw Shadow
-        g.setColor(Color.BLACK);
-        g.drawString(text, x_pos + 3, y + 3);
-        // Draw Foreground
-        g.setColor(color);
-        g.drawString(text, x_pos, y);
     }
 
     private void drawCharacterSelection(Graphics2D g2, int x, int y, int selectionIndex, String label, int opponentIndex) {

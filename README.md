@@ -1,6 +1,6 @@
 # Dino Fighting Game
 
-A fast-paced, two-player fighting game built using Java and Swing. Features robust, competitive mechanics designed for strategic play and precise timing, with both local multiplayer and single-player AI modes.
+A fast-paced, two-player fighting game built using Java 21 and Swing. Features robust, competitive mechanics designed for strategic play and precise timing, with both local multiplayer and single-player AI modes.
 
 ## Core Mechanics
 
@@ -8,7 +8,7 @@ A fast-paced, two-player fighting game built using Java and Swing. Features robu
 
 - **Knockdown System**: The powerful Super Attack forces the opponent into a Knockdown state, where they fall to the ground. They are briefly invincible as they stand up.
 
-- **Hit Impact**: Regular attacks apply a short stun and light knockback, interrupting the opponent's actions.
+- **Hit Impact & Visual Effects**: Regular attacks apply a short stun and light knockback, interrupting the opponent's actions. On-hit visual effects (sparks) emphasize impact and are tuned for visibility and responsiveness.
 
 - **Dynamic Hitboxes**: Attacks have specific vertical properties:
   - Standing attacks hit mid-level (can be dodged by crouching)
@@ -31,7 +31,7 @@ Classic head-to-head combat with two players sharing a keyboard. Perfect for com
 ### Single Player (VS AI)
 Battle against an intelligent AI opponent with adaptive behavior:
 - **Smart Positioning**: AI maintains optimal spacing and approaches strategically
-- **Defensive Reactions**: AI blocks incoming attacks with 60% success rate
+- **Defensive Reactions**: AI blocks incoming attacks with a configurable success rate
 - **Aggressive Offense**: AI attacks when in range and uses Super Attacks when meter is available
 - **Dynamic Movement**: Smooth, human-like movement with natural decision-making
 
@@ -41,27 +41,27 @@ The game is designed for two players sharing a single keyboard.
 
 ### Player 1 (Blue)
 
-| Action | Key |
-|--------|-----|
+| Action            | Key |
+|-------------------|-----|
 | Move Left / Right | A / D |
-| Jump | W |
-| Crouch / Block | S |
-| Regular Attack | F |
-| Super Attack | G |
-| Forward Dash | E |
-| Backstep | R |
+| Jump              | W   |
+| Crouch / Block    | S   |
+| Regular Attack    | F   |
+| Super Attack      | G   |
+| Forward Dash      | E   |
+| Backstep          | R   |
 
 ### Player 2 (Red)
 
-| Action | Key |
-|--------|-----|
+| Action            | Key |
+|-------------------|-----|
 | Move Left / Right | Left / Right Arrows |
-| Jump | Up Arrow |
-| Crouch / Block | Down Arrow |
-| Regular Attack | L |
-| Super Attack | K |
-| Forward Dash | I |
-| Backstep | O |
+| Jump              | Up Arrow            |
+| Crouch / Block    | Down Arrow          |
+| Regular Attack    | L                   |
+| Super Attack      | K                   |
+| Forward Dash      | I                   |
+| Backstep          | O                   |
 
 ### Game Controls
 
@@ -96,7 +96,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 2. Ensure you have Java 21 or higher installed
 3. Verify the `assets/` folder contains all sprite sheets (`fighter_sheet_0.png` through `fighter_sheet_3.png`) and sound files
 4. Compile and run the `DinoFightingGame` class
-5. Select your game mode with 1 (Local) or 2 (AI)
+5. Select your game mode with `1` (Local) or `2` (AI)
 6. Choose your fighters and stage
 7. Press ENTER to start the match
 8. Enjoy the fight!
@@ -119,6 +119,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 - **Collision**: Rectangle-based hitbox detection with precise attack timing
 - **Sound System**: Multi-threaded audio playback for hit sounds, blocks, and super attacks
 - **AI System**: Decision-based opponent with cooldowns for smooth, realistic behavior
+- **Impact FX**: Lightweight particle-style hit effects optimized for clarity and performance
 
 ## Combat System Details
 
@@ -141,10 +142,24 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 - Wakeup Invulnerability: 15 frames
 - Block Cooldown: 120 frames (2 seconds)
 
+## Recent Updates
+
+- **Improved Hit Feedback**
+  - Added clearer, more visible on-hit visual effects to emphasize attack impact.
+  - Tuned effect duration and movement for a snappier feel during exchanges.
+
+- **Visual Polish**
+  - Refined visibility of combat effects against all background stages.
+  - Small consistency improvements across stages and character interactions.
+
+- **Documentation**
+  - README updated to reflect the current AI mode (already implemented) and impact visual effects.
+
 ## Future Updates
 
 Planned features and improvements for upcoming versions:
 
-- **Local Multiplayer Enhancement**: Support for separate keyboards and game controllers, allowing each player to use their own dedicated input device instead of sharing a single keyboard
-- **AI Mode**: Single-player mode with computer-controlled opponents featuring different difficulty levels and fighting styles
-- **Multiple Input Device Support**: Full compatibility with various controllers (Xbox, PlayStation, generic gamepads) alongside individual keyboard configurations for maximum flexibility
+- **Local Multiplayer Enhancement**: Support for separate keyboards and game controllers, allowing each player to use their own dedicated input device instead of sharing a single keyboard.
+- **Difficulty & AI Variety**: Multiple AI difficulty presets and alternative behavior styles (aggressive, defensive, zoning).
+- **Training / Practice Mode**: Sandbox mode with input display, reset-to-center, and infinite meter/health options.
+- **Expanded FX & UI**: Additional combat feedback such as counter-hit indicators, combo display, and optional damage numbers.
