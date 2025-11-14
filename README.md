@@ -1,4 +1,4 @@
-# Dino Fighting Game
+# Fantasy Fighting Game
 
 A fast-paced, two-player fighting game built using Java 21 and Swing. Features robust, competitive mechanics designed for strategic play and precise timing, with both local multiplayer and single-player AI modes.
 
