@@ -15,6 +15,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static final int WIDTH = 800;
     private static final int HEIGHT = 500;
     private static final int GAME_FPS = 60;
+    private static final int ROUND_DURATION_SECONDS = 90; // 1 minute 30 seconds
     private static final int GROUND_Y = 400;
     private static final int INITIAL_STOCKS = 3;
     private static final int ROUND_END_PAUSE_DURATION = 120; // 2 seconds pause
@@ -49,7 +50,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     private static class FighterAssets {
         BufferedImage idleSprite;
         BufferedImage[] runSprites;
-        BufferedImage[] attackSprites; // REQUIRED FOR CONSTRUCTOR
+        BufferedImage[] attackSprites;
     }
 
     // --- 2. FIELDS ---
@@ -85,6 +86,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
     private int roundEndTimer = 0;
     private String roundEndMessage = "";
+
+    private int roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS; // NEW: Timer in frames
 
     private String winnerText = "";
 
@@ -176,23 +179,23 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         FighterAssets assets1 = fighterAssetSets.get(p1SelectionIndex);
         FighterAssets assets2 = fighterAssetSets.get(p2SelectionIndex);
 
-        // Player 1 (Keyset 1) - PASSING ALL 3 ARRAYS HERE
+        // Player 1 (Keyset 1)
         player1 = new Fighter(
                 P1_START_X, GROUND_Y, availableColors[p1SelectionIndex],
                 KeyEvent.VK_A, KeyEvent.VK_D, KeyEvent.VK_W,
                 KeyEvent.VK_F, KeyEvent.VK_G,
                 KeyEvent.VK_S,
                 KeyEvent.VK_E, KeyEvent.VK_R,
-                assets1.idleSprite, assets1.runSprites, assets1.attackSprites // ADDED ATTACK SPRITES
+                assets1.idleSprite, assets1.runSprites, assets1.attackSprites
         );
-        // Player 2 (Keyset 2) - PASSING ALL 3 ARRAYS HERE
+        // Player 2 (Keyset 2)
         player2 = new Fighter(
                 P2_START_X, GROUND_Y, availableColors[p2SelectionIndex],
                 KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP,
                 KeyEvent.VK_L, KeyEvent.VK_K,
                 KeyEvent.VK_DOWN,
                 KeyEvent.VK_I, KeyEvent.VK_O,
-                assets2.idleSprite, assets2.runSprites, assets2.attackSprites // ADDED ATTACK SPRITES
+                assets2.idleSprite, assets2.runSprites, assets2.attackSprites
         );
 
         // Clear P2 keys if in AI mode
@@ -201,6 +204,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             keys[player2.attackKey] = keys[player2.superAttackKey] = keys[player2.crouchKey] = false;
             keys[player2.dashFwdKey] = keys[player2.dashBackKey] = false;
         }
+
+        // Reset the round timer for the start of the match
+        roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS;
     }
 
     private void resetGame() {
@@ -238,13 +244,46 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                     roundEndMessage = "";
                     showFightText = true;
                     fightTimer = FIGHT_SPLASH_DURATION;
+                    // RESET ROUND TIMER HERE
+                    roundTimeRemaining = ROUND_DURATION_SECONDS * GAME_FPS;
                 }
                 repaint();
                 return;
             }
 
+            // --- MAIN GAME TIMER ---
+            if (roundTimeRemaining > 0 && roundEndTimer == 0) {
+                roundTimeRemaining--;
+            }
+
+            // --- CHECK FOR TIME OVER ---
+            if (roundTimeRemaining <= 0) {
+                // Determine winner based on remaining health (if health is equal, it's a draw/time out)
+                if (player1.getHealth() != player2.getHealth()) {
+                    if (player1.getHealth() > player2.getHealth()) {
+                        roundEndMessage = "Player 1 Wins Round (Time)!";
+                        p2Stocks--;
+                    } else {
+                        roundEndMessage = "Player 2 Wins Round (Time)!";
+                        p1Stocks--;
+                    }
+                } else {
+                    roundEndMessage = "Time Over - Draw!";
+                    // For a draw, you could deduct a stock from both or neither. We'll deduct neither for simplicity.
+                }
+
+                // Trigger round end pause
+                if (p1Stocks <= 0 || p2Stocks <= 0) {
+                    winnerText = (p1Stocks <= 0) ? "Player 2 Wins!" : (p2Stocks <= 0) ? "Player 1 Wins!" : "DRAW!";
+                    state = GAME_OVER;
+                }
+                roundEndTimer = ROUND_END_PAUSE_DURATION;
+            }
+            // -------------------------
+
+
             // --- AI LOGIC FOR PLAYER 2 ---
-            if (state == AI_FIGHT) {
+            if (state == AI_FIGHT && roundEndTimer == 0) {
                 AIOpponent.runAILogic(player1, player2, keys);
             }
             // -----------------------------
@@ -303,7 +342,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 }
             }
 
-            // --- CHECK FOR HEALTH/STOCK LOSS (ROUND/MATCH END) ---
+            // --- CHECK FOR HEALTH/STOCK LOSS (ROUND END) ---
             boolean stockLost = false;
             String finalWinner = null;
 
@@ -346,7 +385,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         repaint();
     }
 
-    // --- DRAWING ---
+    // --- 5. DRAWING (paintComponent) ---
 
     @Override
     public void paintComponent(Graphics g) {
@@ -426,6 +465,13 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             drawStocks(g, 50, 95, p1Stocks, availableColors[p1SelectionIndex]);
             drawStocks(g, WIDTH - 150, 95, p2Stocks, availableColors[p2SelectionIndex]);
 
+            // --- DRAW TIMER ---
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            fm = g.getFontMetrics();
+            drawTimer(g, fm);
+            // ------------------
+
+
             // Draw ROUND END Message
             if (roundEndTimer > 0) {
                 g.setFont(new Font("Arial", Font.BOLD, 56));
@@ -451,6 +497,26 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     // --- Custom Drawing Methods ---
+
+    private void drawTimer(Graphics g, FontMetrics fm) {
+        int seconds = roundTimeRemaining / GAME_FPS;
+
+        // Timer display string (M:SS format)
+        String timeString = String.format("%d:%02d", seconds / 60, seconds % 60);
+
+        // Color changes near time over
+        Color timeColor = Color.WHITE;
+        if (seconds <= 10) {
+            timeColor = Color.RED;
+        } else if (seconds <= 30) {
+            timeColor = Color.YELLOW;
+        }
+
+        int x_pos = (WIDTH - fm.stringWidth(timeString)) / 2;
+        int y_pos = 65; // Position in the center top of the screen
+
+        drawCenteredString(g, timeString, y_pos, fm, timeColor);
+    }
 
     // Helper method to draw a centered string with simulated shadow
     private void drawCenteredString(Graphics g, String text, int y, FontMetrics fm, Color color) {
