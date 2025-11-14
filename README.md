@@ -95,7 +95,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 1. Clone the repository
 2. Ensure you have Java 21 or higher installed
 3. Verify the `assets/` folder contains all sprite sheets (`fighter_sheet_0.png` through `fighter_sheet_3.png`) and sound files
-4. Compile and run the `DinoFightingGame` class
+4. Compile and run the `FantasyFightingGame` class
 5. Select your game mode with `1` (Local) or `2` (AI)
 6. Choose your fighters and stage
 7. Press ENTER to start the match
@@ -159,6 +159,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 
 Planned features and improvements for upcoming versions:
 
+- **Hitbox & Hurtbox Rework**: Tighter, more accurate attack and hurtbox tuning (especially for jump-ins and low attacks), improved corner interaction, and better handling of edge cases where attacks visually connect but currently miss.
 - **Local Multiplayer Enhancement**: Support for separate keyboards and game controllers, allowing each player to use their own dedicated input device instead of sharing a single keyboard.
 - **Difficulty & AI Variety**: Multiple AI difficulty presets and alternative behavior styles (aggressive, defensive, zoning).
 - **Training / Practice Mode**: Sandbox mode with input display, reset-to-center, and infinite meter/health options.

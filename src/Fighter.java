@@ -10,11 +10,11 @@ public class Fighter {
     private static final int GROUND_Y = 400;
 
     // Attack and Animation
-    public static final int SPRITE_SIZE = 24; // Physical size of the fighter (pixels)
+    public static final int SPRITE_SIZE = 100; // Physical size of the fighter (pixels)
     private static final int ATTACK_DURATION = 20;
     private static final int ACTIVE_HIT_FRAME = 10;
     private static final int STAND_HEIGHT = SPRITE_SIZE;
-    private static final int CROUCH_HEIGHT = 16;
+    private static final int CROUCH_HEIGHT = 66;
 
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
@@ -22,8 +22,8 @@ public class Fighter {
     // Attack Hitbox Constants (ENLARGED for better gameplay feel)
     private static final int ATTACK_HITBOX_WIDTH = 35; // Increased horizontal reach
     private static final int ATTACK_HITBOX_HEIGHT = 22; // Slightly increased vertical size
-    private static final int STAND_ATTACK_OFFSET_Y = 5;  // Hits mid-level (y=5)
-    private static final int CROUCH_ATTACK_OFFSET_Y = 1;   // Hits low (y=1)
+    private static final int STAND_ATTACK_OFFSET_Y = 30; // Hits mid-level (y=30)
+    private static final int CROUCH_ATTACK_OFFSET_Y = 5;   // Hits low (y=5)
 
     // Dashing
     private static final int DASH_DISTANCE = 100; // Total distance to travel
@@ -38,6 +38,7 @@ public class Fighter {
     private static final int KNOCKDOWN_DURATION = 90;
     private static final int WAKEUP_INVULNERABILITY = 15;
     private static final int FALL_VELOCITY = 10;
+    private static final int HIT_FLASH_DURATION = 15;
 
     // --- SUPER METER CONSTANTS ---
     private static final int MAX_METER = 100;
@@ -46,12 +47,12 @@ public class Fighter {
     public static final double METER_GAIN_TAKEN = 4.0;
 
     // --- ANIMATION CONSTANTS ---
-    public static final int RUN_FRAME_COUNT = 4;
-    private static final int RUN_ANIMATION_SPEED = 5;
-    public static final int ATTACK_FRAME_COUNT = 8; // Used for slicing 8 frames
+    public static final int RUN_FRAME_COUNT = 6;
+    private static final int RUN_ANIMATION_SPEED = 4;
+    public static final int ATTACK_FRAME_COUNT = 6;
 
     // --- Private Fields (Encapsulation) ---
-    private int x, y; // Y is now accessible via getter
+    private int x, y;
     private final int width = SPRITE_SIZE;
     private final int MAX_X_BOUND = SCREEN_WIDTH - width;
 
@@ -60,6 +61,9 @@ public class Fighter {
     private BufferedImage idleSprite;
     private BufferedImage[] runSprites;
     private BufferedImage[] attackSprites; // New array for attack animation
+    private BufferedImage jumpSprite; // Dedicated jump sprite
+    private BufferedImage hurtSprite; // Dedicated hurt sprite
+    private BufferedImage downSprite; // Dedicated down sprite
 
     private int velY = 0;
     private float velX = 0;
@@ -95,13 +99,16 @@ public class Fighter {
     // --- Public Key Fields ---
     public final int leftKey, rightKey, jumpKey, attackKey, superAttackKey, crouchKey, dashFwdKey, dashBackKey;
 
-    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites, BufferedImage[] attackSprites) {
+    public Fighter(int x, int y, Color color, int left, int right, int jump, int attack, int superAttack, int crouch, int dashFwd, int dashBack, BufferedImage idleSprite, BufferedImage[] runSprites, BufferedImage[] attackSprites, BufferedImage jumpSprite, BufferedImage hurtSprite, BufferedImage downSprite) {
         this.x = x;
         this.y = y;
         this.color = color;
         this.idleSprite = idleSprite;
         this.runSprites = runSprites;
-        this.attackSprites = attackSprites; // Initialize attack sprites
+        this.attackSprites = attackSprites;
+        this.jumpSprite = jumpSprite; // Store the jump sprite
+        this.hurtSprite = hurtSprite; // Store the hurt sprite
+        this.downSprite = downSprite; // Store the down sprite
         this.leftKey = left;
         this.rightKey = right;
         this.jumpKey = jump;
@@ -414,6 +421,10 @@ public class Fighter {
             this.health = 0;
         }
 
+        // --- HIT FLASH TRIGGER ---
+        this.invulnerabilityTimer = HIT_FLASH_DURATION;
+        // -------------------------
+
         gainMeter(METER_GAIN_TAKEN);
 
         boolean isSuper = damage == 50;
@@ -450,14 +461,17 @@ public class Fighter {
         // 1. Determine which sprite frame to draw
         BufferedImage currentSprite = idleSprite;
 
-        // Prioritize Jump Sprite if airborne
-        if (!onGround) {
-            // If fighter is airborne, use the idle sprite as a fallback for the jump frame
-            currentSprite = idleSprite;
+        // --- STATE DRAWING PRIORITY ---
+
+        // P1: Hurt/Knocked Down (Highest Priority)
+        if (stunTimer > 0 && hurtSprite != null) {
+            currentSprite = hurtSprite;
+        } else if (knockdownTimer > 0 && downSprite != null) {
+            // We use the same frame for the duration of the knockdown fall
+            currentSprite = downSprite;
         }
-        // --- ATTACK ANIMATION ---
+        // P2: Attack Animation
         else if (attackCooldown > 0 && attackSprites != null) {
-            // Calculate frame based on current cooldown (runs backward from ATTACK_DURATION)
             int attackFrameIndex = (ATTACK_DURATION - attackCooldown) * attackSprites.length / ATTACK_DURATION;
             // Clamp frame index to prevent array bounds error
             if (attackFrameIndex >= attackSprites.length) {
@@ -465,10 +479,16 @@ public class Fighter {
             }
             currentSprite = attackSprites[attackFrameIndex];
         }
-        // --- RUNNING ANIMATION ---
+        // P3: Jump/Airborne
+        else if (!onGround && jumpSprite != null) {
+            currentSprite = jumpSprite;
+        }
+        // P4: Running
         else if (runSprites != null && isRunning && onGround) {
             currentSprite = runSprites[frameIndex];
         }
+        // P5: Idle (Fallback)
+        // currentSprite is already idleSprite by default
 
         // 2. Invulnerability Flash Check
         boolean isFlashing = isInvulnerable() && (invulnerabilityTimer % 5 != 0);
@@ -503,16 +523,5 @@ public class Fighter {
             g.setColor(new Color(255, 50, 50, 80));
             g.fillRect(x - 5, y - 5, width + 10, height + 10);
         }
-
-        // --- HITBOX VISUALIZATION REMOVED HERE ---
-        /*
-        if (isAttackActive()) {
-            g.setColor(Color.YELLOW);
-            Rectangle ar = getAttackRect();
-            if (ar.width > 0) {
-                g.fillRect(ar.x, ar.y, ar.width, ar.height);
-            }
-        }
-        */
     }
 }

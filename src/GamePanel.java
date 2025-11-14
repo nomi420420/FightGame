@@ -52,7 +52,9 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         BufferedImage idleSprite;
         BufferedImage[] runSprites;
         BufferedImage[] attackSprites;
-        // REMOVED: BufferedImage jumpSprite;
+        BufferedImage jumpSprite;
+        BufferedImage hurtSprite;
+        BufferedImage downSprite;
     }
 
     // --- 2. FIELDS ---
@@ -65,7 +67,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     // NEW: List to hold active spark particles
     private final ArrayList<Spark> activeSparks = new ArrayList<>();
 
-    // CHARACTER SELECT FIELDS (4 CHOICES)
+    // CHARACTER SELECT FIELDS (FIXED TO 4 CHOICES)
     private final Color[] availableColors = {Color.BLUE, Color.RED, Color.MAGENTA, Color.YELLOW};
     private int p1SelectionIndex = 0;
     private int p2SelectionIndex = 1;
@@ -114,42 +116,64 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
     }
 
     private void loadImages() {
-        for (int i = 0; i < 4; i++) {
+        final int FRAME_SIZE = Fighter.SPRITE_SIZE; // 100
+        final int RUN_FRAME_COUNT = Fighter.RUN_FRAME_COUNT; // 6
+        final int ATTACK_FRAME_COUNT = Fighter.ATTACK_FRAME_COUNT; // 6
+        final int TOTAL_CHARACTER_SHEETS = availableColors.length; // NOW 4
+
+        for (int i = 0; i < TOTAL_CHARACTER_SHEETS; i++) {
             FighterAssets assets = new FighterAssets();
             try {
                 BufferedImage baseSpriteSheet = ImageIO.read(new File("assets/fighter_sheet_" + i + ".png"));
 
-                final int FRAME_SIZE = Fighter.SPRITE_SIZE;
-                final int RUN_FRAME_COUNT = Fighter.RUN_FRAME_COUNT;
-                final int ATTACK_FRAME_COUNT = Fighter.ATTACK_FRAME_COUNT;
-
-                if (baseSpriteSheet.getHeight() < FRAME_SIZE) {
-                    throw new IOException("Sprite sheet height is too small for frame size: " + baseSpriteSheet.getHeight());
+                if (baseSpriteSheet.getHeight() < FRAME_SIZE * 6) {
+                    System.err.println("Sprite sheet for index " + i + " is too short. Expected at least 600px tall.");
+                    throw new IOException("Sheet height is incorrect.");
                 }
 
-                // SLICING LOGIC
-                // 1. Idle Sprite (Column 0)
-                assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
-
-                // 2. Running Sprites (Columns 1, 2, 3, 4)
-                assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
-                for (int j = 0; j < RUN_FRAME_COUNT; j++) {
-                    int xOffset = (j + 1) * FRAME_SIZE;
-                    if (xOffset + FRAME_SIZE > baseSpriteSheet.getWidth()) {
-                        throw new IOException("Sprite sheet width is too small for " + RUN_FRAME_COUNT + " run frames.");
+                // --- SLICING LOGIC ---
+                // Slicing logic remains dynamic for Orc (i=0, i=1, i=3) and Skeleton (i=2)
+                if (i == 2) {
+                    // Armored Skeleton Layout (Specific columns/rows)
+                    assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+                    assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
+                    for (int j = 0; j < RUN_FRAME_COUNT; j++) {
+                        int xOffset = j * FRAME_SIZE;
+                        int yOffset = 1 * FRAME_SIZE; // Row 1
+                        assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
                     }
-                    assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
+
+                    assets.jumpSprite = baseSpriteSheet.getSubimage(5 * FRAME_SIZE, 0, FRAME_SIZE, FRAME_SIZE);
+                    assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                    assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+
+                    assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
+                    for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
+                        int xOffset = (j + 1) * FRAME_SIZE;
+                        int yOffset = 2 * FRAME_SIZE; // Row 2
+                        assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                    }
                 }
-
-                // 3. Attack Sprites (Last 8 columns: 7, 8, 9, ..., 14)
-                assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
-                int attackStartColumn = 15 - ATTACK_FRAME_COUNT; // 15 total columns - 8 attack frames = starts at column 7
-                for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
-                    int xOffset = (attackStartColumn + j) * FRAME_SIZE;
-                    if (xOffset + FRAME_SIZE > baseSpriteSheet.getWidth()) {
-                        throw new IOException("Sprite sheet width is too small for " + ATTACK_FRAME_COUNT + " attack frames.");
+                // Default Layout (Orc/Knight)
+                else {
+                    assets.idleSprite = baseSpriteSheet.getSubimage(0, 0, FRAME_SIZE, FRAME_SIZE);
+                    assets.runSprites = new BufferedImage[RUN_FRAME_COUNT];
+                    for (int j = 0; j < RUN_FRAME_COUNT; j++) {
+                        int xOffset = j * FRAME_SIZE;
+                        int yOffset = 1 * FRAME_SIZE; // Row 1
+                        assets.runSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
                     }
-                    assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, 0, FRAME_SIZE, FRAME_SIZE);
+
+                    assets.jumpSprite = baseSpriteSheet.getSubimage(0, 5 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                    assets.hurtSprite = baseSpriteSheet.getSubimage(0, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+                    assets.downSprite = baseSpriteSheet.getSubimage(1 * FRAME_SIZE, 4 * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
+
+                    assets.attackSprites = new BufferedImage[ATTACK_FRAME_COUNT];
+                    for (int j = 0; j < ATTACK_FRAME_COUNT; j++) {
+                        int xOffset = j * FRAME_SIZE;
+                        int yOffset = 2 * FRAME_SIZE; // Row 2
+                        assets.attackSprites[j] = baseSpriteSheet.getSubimage(xOffset, yOffset, FRAME_SIZE, FRAME_SIZE);
+                    }
                 }
 
                 fighterAssetSets.add(assets);
@@ -161,13 +185,17 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 final int FALLBACK_SIZE = Fighter.SPRITE_SIZE;
                 BufferedImage fallback = new BufferedImage(FALLBACK_SIZE, FALLBACK_SIZE, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D g2_fallback = fallback.createGraphics();
-                g2_fallback.setColor(Color.WHITE);
+                g2_fallback.setColor(Color.RED);
                 g2_fallback.fillRect(0, 0, FALLBACK_SIZE, FALLBACK_SIZE);
                 g2_fallback.dispose();
 
+                // Ensure fallbacks match required size (6 frames run/attack)
                 assets.idleSprite = fallback;
-                assets.runSprites = new BufferedImage[]{fallback, fallback, fallback, fallback};
-                assets.attackSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback, fallback, fallback};
+                assets.runSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
+                assets.attackSprites = new BufferedImage[]{fallback, fallback, fallback, fallback, fallback, fallback};
+                assets.jumpSprite = fallback;
+                assets.hurtSprite = fallback;
+                assets.downSprite = fallback;
                 fighterAssetSets.add(assets);
             }
         }
@@ -191,7 +219,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 KeyEvent.VK_F, KeyEvent.VK_G,
                 KeyEvent.VK_S,
                 KeyEvent.VK_E, KeyEvent.VK_R,
-                assets1.idleSprite, assets1.runSprites, assets1.attackSprites
+                assets1.idleSprite, assets1.runSprites, assets1.attackSprites,
+                assets1.jumpSprite, assets1.hurtSprite, assets1.downSprite
         );
         // Player 2 (Keyset 2)
         player2 = new Fighter(
@@ -200,7 +229,8 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
                 KeyEvent.VK_L, KeyEvent.VK_K,
                 KeyEvent.VK_DOWN,
                 KeyEvent.VK_I, KeyEvent.VK_O,
-                assets2.idleSprite, assets2.runSprites, assets2.attackSprites
+                assets2.idleSprite, assets2.runSprites, assets2.attackSprites,
+                assets2.jumpSprite, assets2.hurtSprite, assets2.downSprite
         );
 
         // Clear P2 keys if in AI mode
@@ -577,7 +607,7 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
         g2.drawString(label, x, y - 40);
 
         final int boxSize = 60;
-        final int spriteSize = Fighter.SPRITE_SIZE; // 24
+        final int spriteSize = Fighter.SPRITE_SIZE; // 100
 
         for (int i = 0; i < availableColors.length; i++) {
             int boxX = x + i * boxSize;
@@ -590,9 +620,11 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
             // 2. Draw Sprite Preview
             BufferedImage sprite = fighterAssetSets.get(i).idleSprite;
             if (sprite != null) {
-                int spriteDrawX = boxX + (boxSize - 10) / 2 - spriteSize / 2;
-                int spriteDrawY = boxY + (boxSize - 10) / 2 - spriteSize / 2;
-                g2.drawImage(sprite, spriteDrawX, spriteDrawY, spriteSize, spriteSize, null);
+                // We draw the 100x100 sprite into a 50x50 space for the menu preview
+                int scaledSize = 50;
+                int spriteDrawX = boxX + (boxSize - 10) / 2 - scaledSize / 2;
+                int spriteDrawY = boxY + (boxSize - 10) / 2 - scaledSize / 2;
+                g2.drawImage(sprite, spriteDrawX, spriteDrawY, scaledSize, scaledSize, null);
             }
 
             // 3. Draw Selection Frame/Indicator
@@ -661,23 +693,23 @@ public class GamePanel extends JPanel implements KeyListener, ActionListener {
 
         // Draw background (empty meter)
         g.setColor(Color.GRAY.darker());
-        g.fillRect(x, y, BAR_WIDTH, BAR_HEIGHT);
+        g2.fillRect(x, y, BAR_WIDTH, BAR_HEIGHT);
 
         // Draw meter fill (orange/yellow)
         g.setColor(new Color(255, 165, 0));
         int currentWidth = (int) Math.max(0, meter);
-        g.fillRect(x, y, currentWidth, BAR_HEIGHT);
+        g2.fillRect(x, y, currentWidth, BAR_HEIGHT);
 
         // Draw outer outline
         g.setColor(Color.BLACK);
-        g.drawRect(x - 1, y - 1, BAR_WIDTH + 1, BAR_HEIGHT + 1);
+        g2.drawRect(x - 1, y - 1, BAR_WIDTH + 1, BAR_HEIGHT + 1);
 
         // Pulsing border when Super Attack is Ready
         if (meter >= Fighter.SUPER_ATTACK_COST) {
             if ((System.currentTimeMillis() / 150) % 2 == 0) {
-                g.setColor(Color.YELLOW);
+                g2.setColor(Color.YELLOW);
             } else {
-                g.setColor(Color.ORANGE);
+                g2.setColor(Color.ORANGE);
             }
             g2.setStroke(new BasicStroke(2));
             g2.drawRect(x - 2, y - 2, BAR_WIDTH + 3, BAR_HEIGHT + 3);
