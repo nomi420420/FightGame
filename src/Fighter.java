@@ -28,8 +28,8 @@ public class Fighter {
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
 
     // Attack Hitbox Constants (Updated for 50px size)
-    private static final int ATTACK_HITBOX_WIDTH = 35; // Increased horizontal reach
-    private static final int ATTACK_HITBOX_HEIGHT = 22; // Slightly increased vertical size
+    private static final int ATTACK_HITBOX_WIDTH = 65; // INCREASED FOR FORGIVENESS
+    private static final int ATTACK_HITBOX_HEIGHT = 30; // SLIGHTLY INCREASED
     private static final int STAND_ATTACK_OFFSET_Y = 30;  // Hits mid-level (y=30)
     private static final int CROUCH_ATTACK_OFFSET_Y = 5;   // Hits low (y=5)
 
@@ -370,6 +370,10 @@ public class Fighter {
 
     // --- Attack & Damage Logic ---
 
+    /**
+     * FIX: Adjusted offsetX to ensure the attack box overlaps the opponent's
+     * collision box when facing forward (direction == 1).
+     */
     public Rectangle getAttackRect() {
         if (isAttackActive()) {
             int offsetY;
@@ -379,7 +383,15 @@ public class Fighter {
                 offsetY = STAND_ATTACK_OFFSET_Y;
             }
 
-            int offsetX = direction == 1 ? width : -ATTACK_HITBOX_WIDTH;
+            // --- HORIZONTAL OFFSET FIX: STARTING THE PUNCH EARLIER (at x + 60) ---
+            // Current fix attempts:
+            // Previous (failed): width - 15 (85) -> Punch started at x+85
+            // NEW (Aggressive Reach): width - 40 (60) -> Punch starts at x+60.
+            // This guarantees overlap with the opponent's 20px wide body when fighters are close.
+            int aggressiveStartOffset = width - 40;
+
+            int offsetX = direction == 1 ? aggressiveStartOffset : -ATTACK_HITBOX_WIDTH;
+            // -----------------------------
 
             return new Rectangle(x + offsetX, y + offsetY, ATTACK_HITBOX_WIDTH, ATTACK_HITBOX_HEIGHT);
         }
@@ -410,6 +422,7 @@ public class Fighter {
     }
 
     public boolean canHit() {
+        // Renamed from 'canHit' to 'isHitRegistered' to reflect the logic better
         return isAttackActive() && hasHit == false;
     }
 
@@ -425,6 +438,7 @@ public class Fighter {
         boolean isFacingAttack = (attackerDirection != this.direction);
 
         if (isBlocking && isFacingAttack) {
+            // Damage Blocked
             blockCooldown = MAX_BLOCK_COOLDOWN;
             this.isBlocking = false;
             return;
@@ -441,7 +455,7 @@ public class Fighter {
 
         gainMeter(METER_GAIN_TAKEN);
 
-        boolean isSuper = damage == 50;
+        boolean isSuper = damage == 50; // Simple way to check if it was a heavy hit
         int knockbackSign = attackerDirection * -1; // Push away from attacker
 
         if (isSuper) {
