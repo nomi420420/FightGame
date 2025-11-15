@@ -113,7 +113,7 @@ Use Player 2's arrow keys (or Left/Right in AI mode) to cycle through stages bef
 ## Technical Details
 
 - **Frame Rate**: 60 FPS
-- **Screen Resolution**: 800x500 pixels
+- **Display Mode**: Fullscreen exclusive mode
 - **Physics**: Custom gravity and velocity system
 - **Animation**: Sprite-based with automatic frame cycling (4-frame run animation)
 - **Collision**: Rectangle-based hitbox detection with precise attack timing
