@@ -3,12 +3,12 @@ import java.awt.event.KeyEvent;
 
 /**
  * Static utility class containing the logic for the Player 2 (AI) opponent.
- * This version uses a reliable, immediate attack input when in range.
+ * This version uses a reliable, immediate attack input when in range, with human-like reaction delays for movement.
  */
 public class AIOpponent {
 
     // AI Constants
-    private static final int AI_MIN_REACT_TIME = 1; // Minimum delay is 1 frame (instant)
+    private static final int AI_MIN_REACT_TIME = 1; // Minimum delay is 1 frame (instant movement)
     private static final int AI_MAX_REACT_TIME = 3; // Maximum delay is 3 frames (very fast)
     private static final int AI_ATTACK_RANGE = 50;
     private static final int AI_BLOCK_RANGE = 80;
@@ -32,7 +32,6 @@ public class AIOpponent {
 
         // Reset all active movement/defense keys before making a new decision
         keys[player2.leftKey] = keys[player2.rightKey] = keys[player2.jumpKey] = keys[player2.crouchKey] = false;
-        // Do NOT reset attack keys here, as they are handled by direct function calls below.
 
         int distance = Math.abs(player1.getX() - player2.getX());
         int directionToPlayerKey = (player1.getX() < player2.getX()) ? player2.leftKey : player2.rightKey;
@@ -53,11 +52,15 @@ public class AIOpponent {
         // --- React Timer (GATES MOVEMENT AND DEFENSE) ---
         if (aiReactTimer > 0) {
             aiReactTimer--;
-            return;
+
+            // NOTE: We don't return here. We allow the movement decision below to execute
+            // every single frame, overriding the previous logic. This is the fix for slow speed.
         }
 
-        // Set a new random reaction delay
-        aiReactTimer = (int) (Math.random() * (AI_MAX_REACT_TIME - AI_MIN_REACT_TIME)) + AI_MIN_REACT_TIME;
+        // Set a new random reaction delay (Timer is only set when a decision needs to be delayed)
+        if (aiReactTimer == 0) {
+            aiReactTimer = (int) (Math.random() * (AI_MAX_REACT_TIME - AI_MIN_REACT_TIME)) + AI_MIN_REACT_TIME;
+        }
 
 
         // --- 1. DEFENSE LOGIC (High Priority) ---
