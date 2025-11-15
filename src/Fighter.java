@@ -13,7 +13,7 @@ public class Fighter {
     public static final int SPRITE_SIZE = 100; // Visual size of the fighter (pixels)
 
     // --- NEW CONSTANT FOR VISUAL ALIGNMENT ---
-    private static final int SPRITE_VERTICAL_OFFSET = 40; // Shifts the drawn sprite down 40px
+    private static final int SPRITE_VERTICAL_OFFSET = 40; // Shifts the drawn sprite down 40 px
 
     // --- COLLISION CONSTANTS ---
     private static final int COLLISION_WIDTH = 20;
@@ -27,7 +27,7 @@ public class Fighter {
     // Blocking
     private static final int MAX_BLOCK_COOLDOWN = 120; // 2 seconds cooldown
 
-    // Attack Hitbox Constants (Updated for 50px size)
+    // Attack Hitbox Constants (Updated for 50 px size)
     private static final int ATTACK_HITBOX_WIDTH = 65; // INCREASED FOR FORGIVENESS
     private static final int ATTACK_HITBOX_HEIGHT = 30; // SLIGHTLY INCREASED
     private static final int STAND_ATTACK_OFFSET_Y = 30;  // Hits mid-level (y=30)
